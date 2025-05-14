@@ -223,6 +223,49 @@ def main():
                         print(f'\n Test_multi | Epoch: {epoch+1} | Top-1 ACC: {multi_top_1_acc:.4f} | Top-3 ACC: {multi_top_3_acc:.4f} | Top-5 ACC: {multi_top_5_acc:.4f} | Top-10 ACC: {multi_top_10_acc:.4f} ')
                         print(f'\n Test Recall | Epoch: {epoch+1} | Micro_Recall: {test_micro:.4f} | Macro_Recall: {test_macro:.4f} ')
 
+                        # 保存当前最佳模型的embedding
+                        print("\n保存embedding向量用于检索...")
+                        
+                        # 收集训练集的embedding
+                        train_embs = []
+                        model.eval()
+                        with torch.no_grad():
+                            for batch in tqdm(train_loader, desc="处理训练集"):
+                                batch.to(device)
+                                _, emb, _ = model(batch, None)
+                                train_embs.append(emb.unsqueeze(1))  # 添加一个维度以匹配retrieval_mpc.py中的要求
+                        
+                        # 收集验证集的embedding
+                        valid_embs = []
+                        with torch.no_grad():
+                            for batch in tqdm(valid_loader, desc="处理验证集"):
+                                batch.to(device)
+                                _, emb, _ = model(batch, None)
+                                valid_embs.append(emb.unsqueeze(1))  # 添加一个维度以匹配retrieval_mpc.py中的要求
+                        
+                        # 收集测试集的embedding
+                        test_embs = []
+                        with torch.no_grad():
+                            for batch in tqdm(test_loader, desc="处理测试集"):
+                                batch.to(device)
+                                _, emb, _ = model(batch, None)
+                                test_embs.append(emb.unsqueeze(1))  # 添加一个维度以匹配retrieval_mpc.py中的要求
+                        
+                        # 将嵌入向量拼接为tensor并保存
+                        train_embs_tensor = torch.cat(train_embs, dim=0)
+                        valid_embs_tensor = torch.cat(valid_embs, dim=0)
+                        test_embs_tensor = torch.cat(test_embs, dim=0)
+                        
+                        # 保存到根据RetrievalRetroPipeline.sh中指定的路径
+                        torch.save(train_embs_tensor, f'./dataset/{args.split}/train_mpc_embeddings.pt')
+                        torch.save(valid_embs_tensor, f'./dataset/{args.split}/valid_mpc_embeddings.pt')
+                        torch.save(test_embs_tensor, f'./dataset/{args.split}/test_mpc_embeddings.pt')
+                        
+                        print(f"已保存embedding到./dataset/{args.split}/")
+                        print(f"训练集embedding shape: {train_embs_tensor.shape}")
+                        print(f"验证集embedding shape: {valid_embs_tensor.shape}")
+                        print(f"测试集embedding shape: {test_embs_tensor.shape}")
+
                 try:
                     if multi_top_5_acc:
                         best_acc_list.append(multi_top_5_acc)
