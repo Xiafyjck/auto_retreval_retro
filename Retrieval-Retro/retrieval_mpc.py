@@ -6,11 +6,12 @@ import json
 import torch.nn.functional as F
 from collections import defaultdict
 import argparse
+import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--split', type=str, default='year')
 parser.add_argument('--K', type=int, default=3, help='number of candidates to retrieve')
-parser.add_argument('--device', type=int, default=6, help='GPU device ID')
+parser.add_argument('--device', type=int, default=0, help='GPU device ID')
 args = parser.parse_args()
 
 def make_sim_mpc(device):
@@ -63,7 +64,12 @@ def compute_rank_in_batches(tensor, batch_size):
 def make_retrieved(mode, rank_matrix, k):
      
     save_path = f'./dataset/{args.split}/{mode}_mpc_retrieved_{k}'
-
+    
+    print(f"保存检索结果到: {save_path}")
+    
+    # 确保输出目录存在
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    
     candidate_list = defaultdict(list)
 
     for idx, sim_row in enumerate(rank_matrix):
@@ -71,7 +77,9 @@ def make_retrieved(mode, rank_matrix, k):
         candidate_list[idx] = top_k_idx.tolist()
 
     with open(save_path, 'w') as f:
-            json.dump(candidate_list, f)
+        json.dump(candidate_list, f)
+    
+    print(f"已保存 {len(candidate_list)} 个样本的检索结果到 {save_path}")
 
 
 
@@ -79,7 +87,9 @@ def main():
 
     device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(device)
-    print(device)
+    print(f"使用设备: {device}")
+    print(f"数据集拆分: {args.split}")
+    print(f"检索数量K: {args.K}")
 
     make_sim_mpc(device)
 
@@ -87,12 +97,19 @@ def main():
     yr_mpc_valid = torch.load(f"./dataset/{args.split}/valid_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
     yr_mpc_test = torch.load(f"./dataset/{args.split}/test_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
 
+    print(f"余弦相似度矩阵形状: train={yr_mpc_train.shape}, valid={yr_mpc_valid.shape}, test={yr_mpc_test.shape}")
+
     batch_size = 1000
+    print(f"开始计算排名，批次大小：{batch_size}")
+    
     rank_mpc_train = compute_rank_in_batches(yr_mpc_train, batch_size)
-
+    print(f"训练集排名计算完成，形状: {rank_mpc_train.shape}")
+    
     rank_mpc_valid = compute_rank_in_batches(yr_mpc_valid, batch_size)
-
+    print(f"验证集排名计算完成，形状: {rank_mpc_valid.shape}")
+    
     rank_mpc_test = compute_rank_in_batches(yr_mpc_test, batch_size)
+    print(f"测试集排名计算完成，形状: {rank_mpc_test.shape}")
 
     rank_matrix_list = [rank_mpc_train, rank_mpc_valid, rank_mpc_test]
 
@@ -101,13 +118,12 @@ def main():
 
         if idx == 0:
             mode = 'train'
-
         elif idx == 1:
             mode = 'valid'
-
         elif idx == 2:
             mode = 'test'
 
+        print(f"为{mode}集生成检索结果，K={args.K}")
         make_retrieved(mode, matrix, args.K)
 
 
