@@ -14,7 +14,7 @@
 # [K_VALUE]：可选，检索的材料数量，默认为3
 #
 # 示例：
-# ./RetrievalRetroPipeline.sh /home/user/proceed /home/user/Retrieval-Retro ceder 0 3
+# ./RetrievalRetroPipeline.sh /home/user/data_processing /home/user/Retrieval-Retro ceder 0 3
 #
 # 数据流流程说明：
 # 1. 从原始数据生成前驱体图数据 (${DATASET_NAME}_precursor_graph.pt)

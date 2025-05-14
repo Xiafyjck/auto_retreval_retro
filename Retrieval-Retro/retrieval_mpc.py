@@ -9,6 +9,8 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--split', type=str, default='year')
+parser.add_argument('--K', type=int, default=3, help='number of candidates to retrieve')
+parser.add_argument('--device', type=int, default=6, help='GPU device ID')
 args = parser.parse_args()
 
 def make_sim_mpc(device):
