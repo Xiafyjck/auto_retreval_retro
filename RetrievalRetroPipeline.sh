@@ -180,6 +180,8 @@ echo "环境验证通过"
 
 # 创建必要的目录
 mkdir -p "$RETRO_DIR/dataset/${DATASET_NAME}"
+# 确保proceed目录存在
+mkdir -p "$PROCEED_DIR/proceed"
 
 # 开始数据处理流程
 echo -e "\n=== 开始数据处理流程 ==="
