@@ -336,17 +336,42 @@ def main():
                 # 终止当前批次，尝试下一个批次
                 continue
                 
-            loss_template = bce_loss(template_output, y)
-            loss = loss_template
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            train_loss += loss
+                # 只在第一个批次或出现维度不匹配时打印形状信息
+                if bc == 0 or template_output.size(0) != y.size(0):
+                    print(f"template_output shape: {template_output.shape}, y shape: {y.shape}")
+                
+                # 确保模型输出和目标有相同的batch大小
+                if template_output.size(0) != y.size(0):
+                    print(f"警告: 输出和目标batch大小不匹配! 输出: {template_output.size(0)}, 目标: {y.size(0)}")
+                    
+                    # 如果模型只返回了一个样本，但我们有多个目标
+                    if template_output.size(0) == 1 and y.size(0) > 1:
+                        # 扩展模型输出以匹配目标数量
+                        template_output = template_output.repeat(y.size(0), 1)
+                        print(f"已扩展模型输出至 {template_output.shape}")
+                    # 如果目标只有一个样本，但模型返回了多个
+                    elif y.size(0) == 1 and template_output.size(0) > 1:
+                        # 扩展目标以匹配模型输出
+                        y = y.repeat(template_output.size(0), 1)
+                        print(f"已扩展目标至 {y.shape}")
+                    else:
+                        # 取两者中较小的尺寸
+                        min_batch = min(template_output.size(0), y.size(0))
+                        template_output = template_output[:min_batch]
+                        y = y[:min_batch]
+                        print(f"截取至共同batch大小: {min_batch}")
+                
+                loss_template = bce_loss(template_output, y)
+                loss = loss_template
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                train_loss += loss
 
-            # 减少输出频率，只每10个批次更新一次进度
-            if bc % 10 == 0 or bc == num_batch - 1:
-                sys.stdout.write(f'\r[ epoch {epoch+1}/{args.epochs} | batch {bc}/{num_batch} ] Total Loss : {(train_loss/(bc+1)):.4f}')
-                sys.stdout.flush()
+                # 减少输出频率，只每10个批次更新一次进度
+                if bc % 10 == 0 or bc == num_batch - 1:
+                    sys.stdout.write(f'\r[ epoch {epoch+1}/{args.epochs} | batch {bc}/{num_batch} ] Total Loss : {(train_loss/(bc+1)):.4f}')
+                    sys.stdout.flush()
 
         if (epoch + 1) % args.eval == 0 :
             model.eval()

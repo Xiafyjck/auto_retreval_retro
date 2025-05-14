@@ -60,10 +60,32 @@ class Retrieval_Retro(nn.Module):
             # 检查主图是否有必要的属性
             if not hasattr(main_graph, 'x') or not hasattr(main_graph, 'edge_index'):
                 raise ValueError("主图缺少必要的属性")
+                
+            # 获取批次大小
+            batch_size = len(main_graph.ptr) - 1
+            # 只在第一次前向传播时打印批次大小
+            if not hasattr(self, '_printed_batch_size'):
+                print(f"批次大小: {batch_size}")
+                self._printed_batch_size = True
 
             main_graph_x = self.gnn(main_graph)
             main_weighted_x = main_graph_x * main_graph.fc_weight.reshape(-1, 1)
             main_graph_emb = scatter_sum(main_weighted_x, main_graph.batch, dim = 0)
+            
+            # 确保main_graph_emb的第一维是batch_size
+            if main_graph_emb.size(0) != batch_size:
+                print(f"警告: 主图嵌入维度不匹配批次大小! 嵌入: {main_graph_emb.size(0)}, 批次: {batch_size}")
+                if main_graph_emb.size(0) < batch_size:
+                    # 扩展嵌入以匹配批次大小
+                    repeat_times = batch_size // main_graph_emb.size(0)
+                    remainder = batch_size % main_graph_emb.size(0)
+                    expanded_emb = main_graph_emb.repeat(repeat_times, 1)
+                    if remainder > 0:
+                        expanded_emb = torch.cat([expanded_emb, main_graph_emb[:remainder]], dim=0)
+                    main_graph_emb = expanded_emb
+                else:
+                    # 截取嵌入以匹配批次大小
+                    main_graph_emb = main_graph_emb[:batch_size]
 
             # 处理第一组额外图
             add_graph_outputs = []
@@ -184,9 +206,35 @@ class Retrieval_Retro(nn.Module):
             # Cross Attention Layers
             cross_attn_output_2 = self.cross_attention_2(main_graph_emb.unsqueeze(0), add_pooled_self_2, add_pooled_self_2)
 
-
+            # 拼接所有特征
             classifier_input = torch.cat([main_graph_emb, cross_attn_output.squeeze(0), cross_attn_output_2.squeeze(0)], dim=1)
+            
+            # 确保classifier_input的第一维是batch_size
+            if classifier_input.size(0) != batch_size:
+                print(f"警告: 分类器输入维度不匹配批次大小! 输入: {classifier_input.size(0)}, 批次: {batch_size}")
+                if classifier_input.size(0) < batch_size:
+                    # 扩展输入以匹配批次大小
+                    repeat_times = batch_size // classifier_input.size(0)
+                    remainder = batch_size % classifier_input.size(0)
+                    expanded_input = classifier_input.repeat(repeat_times, 1)
+                    if remainder > 0:
+                        expanded_input = torch.cat([expanded_input, classifier_input[:remainder]], dim=0)
+                    classifier_input = expanded_input
+                else:
+                    # 截取输入以匹配批次大小
+                    classifier_input = classifier_input[:batch_size]
+            
             template_output = self.classifier(classifier_input)
+            
+            # 最后再次检查输出的batch大小
+            if template_output.size(0) != batch_size:
+                print(f"警告: 最终输出维度不匹配批次大小! 输出: {template_output.size(0)}, 批次: {batch_size}")
+                if template_output.size(0) < batch_size:
+                    # 扩展输出以匹配批次大小
+                    template_output = template_output.repeat(batch_size, 1)
+                else:
+                    # 截取输出以匹配批次大小
+                    template_output = template_output[:batch_size]
 
             return template_output
             
