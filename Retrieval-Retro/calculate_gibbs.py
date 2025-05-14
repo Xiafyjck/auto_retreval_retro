@@ -78,36 +78,93 @@ def main():
     configuration = utils_main.exp_get_name_RetroPLEX(train_config)
     print(f'configuration: {configuration}')
 
+    # 添加更详细的目录和文件检查
+    print(f"\n=== 路径检查 ===")
+    dataset_dir = f"./dataset/{args.split}"
+    print(f"数据集目录: {dataset_dir}")
+    
+    # 检查数据集目录是否存在
+    if not os.path.exists(dataset_dir):
+        print(f"警告: 数据集目录 {dataset_dir} 不存在! 尝试创建...")
+        try:
+            os.makedirs(dataset_dir, exist_ok=True)
+            print(f"已创建数据集目录: {dataset_dir}")
+        except Exception as e:
+            print(f"错误: 无法创建数据集目录: {e}")
+    
+    # 检查必要的数据文件
+    required_files = [
+        f"./dataset/{args.split}/precursor_graph.pt",
+        f"./dataset/{args.split}/train_mpc.pt",
+        f"./dataset/{args.split}/valid_mpc.pt",
+        f"./dataset/{args.split}/test_mpc.pt"
+    ]
+    
+    all_files_exist = True
+    for file_path in required_files:
+        if os.path.exists(file_path):
+            print(f"✓ 文件存在: {file_path}")
+        else:
+            print(f"✗ 文件不存在: {file_path}")
+            all_files_exist = False
+    
+    if not all_files_exist:
+        print("警告: 一些必要的文件不存在，这可能导致脚本执行失败。")
+        print("请确保已经运行了前面的数据准备步骤，并且文件已经正确复制到相应目录。")
+        
+    # 检查预期的输出路径
+    output_files = [
+        f"./dataset/{args.split}/train_nre_retrieved_{args.K}",
+        f"./dataset/{args.split}/valid_nre_retrieved_{args.K}",
+        f"./dataset/{args.split}/test_nre_retrieved_{args.K}"
+    ]
+    
+    print("\n预期的输出文件:")
+    for file_path in output_files:
+        if os.path.exists(file_path):
+            print(f"✓ 已存在: {file_path}")
+        else:
+            print(f"- 将创建: {file_path}")
+    
     # 使用命令行参数中的设备ID，不再硬编码
     device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(device)
-    print(f"使用设备: {device}")
+    print(f"\n使用设备: {device}")
     print(f"数据集拆分: {args.split}")
     print(f"检索数量K: {args.K}")
     
     seed_everything(seed=args.seed)
 
-    print("加载数据集...")
+    print("\n加载数据集...")
     start_time = time.time()
     
-    precursor_graph = torch.load(f"./dataset/{args.split}/precursor_graph.pt", map_location=device, weights_only=False)
-    precursor_loader = DataLoader(precursor_graph, batch_size = 1, shuffle=False)
-
-    train_dataset = torch.load(f'./dataset/{args.split}/train_mpc.pt', weights_only=False)
-    valid_dataset = torch.load(f'./dataset/{args.split}/valid_mpc.pt', weights_only=False)
-    test_dataset = torch.load(f'./dataset/{args.split}/test_mpc.pt', weights_only=False)
-
-    train_loader = DataLoader(train_dataset, batch_size = 1, shuffle=False)
-    valid_loader = DataLoader(valid_dataset, batch_size = 1)
-    test_loader = DataLoader(test_dataset, batch_size = 1)
-
-    print(f"数据集加载完成! 用时: {time.time() - start_time:.2f}秒")
-    print(f"数据集大小: 前驱体={len(precursor_graph)}, 训练集={len(train_dataset)}, 验证集={len(valid_dataset)}, 测试集={len(test_dataset)}")
-
-    n_hidden = args.hidden
-    n_atom_feat = train_dataset[0].x.shape[1]
-    n_bond_feat = train_dataset[0].edge_attr.shape[1]
-    output_dim = train_dataset[0].y_multiple.shape[1] #Dataset precursor set dim 
+    try:
+        precursor_graph = torch.load(f"./dataset/{args.split}/precursor_graph.pt", map_location=device, weights_only=False)
+        precursor_loader = DataLoader(precursor_graph, batch_size = 1, shuffle=False)
+        
+        train_dataset = torch.load(f'./dataset/{args.split}/train_mpc.pt', weights_only=False)
+        valid_dataset = torch.load(f'./dataset/{args.split}/valid_mpc.pt', weights_only=False)
+        test_dataset = torch.load(f'./dataset/{args.split}/test_mpc.pt', weights_only=False)
+        
+        train_loader = DataLoader(train_dataset, batch_size = 1, shuffle=False)
+        valid_loader = DataLoader(valid_dataset, batch_size = 1)
+        test_loader = DataLoader(test_dataset, batch_size = 1)
+        
+        print(f"数据集加载完成! 用时: {time.time() - start_time:.2f}秒")
+        print(f"数据集大小: 前驱体={len(precursor_graph)}, 训练集={len(train_dataset)}, 验证集={len(valid_dataset)}, 测试集={len(test_dataset)}")
+    except Exception as e:
+        print(f"错误: 无法加载数据集: {e}")
+        print("请确保数据文件存在且格式正确。")
+        return
+        
+    try:
+        n_hidden = args.hidden
+        n_atom_feat = train_dataset[0].x.shape[1]
+        n_bond_feat = train_dataset[0].edge_attr.shape[1]
+        output_dim = train_dataset[0].y_multiple.shape[1] #Dataset precursor set dim 
+    except Exception as e:
+        print(f"错误: 无法获取数据特征维度: {e}")
+        return
 
     print("加载预训练模型...")
     model = GraphNetwork_prop(args.layers, n_atom_feat, n_bond_feat, n_hidden, device).to(device)
@@ -204,7 +261,7 @@ def main():
     # 检查是否已存在差异文件
     if os.path.exists(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt'):
         print(f"训练集差异文件已存在，跳过计算")
-        # 分批加载以节省内image.png存
+        # 分批加载以节省内存
         train_matrix = torch.load(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt', map_location='cpu')
         # 只将用于处理的部分移到GPU
         train_matrix = train_matrix.to(device)
