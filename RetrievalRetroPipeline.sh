@@ -124,9 +124,9 @@ PRETRAIN_PATH_PROCEED="${PROCEED_DIR}/${PRETRAIN_MODEL}"
 PRETRAIN_PATH_RETRO="${RETRO_DIR}/dataset/${PRETRAIN_MODEL}"
 
 if [ -f "$PRETRAIN_PATH_RETRO" ]; then
-    echo "✓ 找到预训练模型: ${PRETRAIN_MODEL}（在Retro目录）"
+    echo "✓ 找到预训练模型: ${PRETRAIN_MODEL}（在Retrieval-Retro目录）"
 elif [ -f "$PRETRAIN_PATH_PROCEED" ]; then
-    echo "✓ 找到预训练模型: ${PRETRAIN_MODEL}（在Proceed目录，将复制到Retro目录）"
+    echo "✓ 找到预训练模型: ${PRETRAIN_MODEL}（在Proceed目录，将复制到Retrieval-Retro目录）"
     mkdir -p "${RETRO_DIR}/dataset"
     cp "$PRETRAIN_PATH_PROCEED" "$PRETRAIN_PATH_RETRO"
 else
