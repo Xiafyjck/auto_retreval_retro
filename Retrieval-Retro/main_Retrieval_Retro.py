@@ -95,6 +95,31 @@ def main():
     print("数据集加载完成!")
     print(f"数据集大小: 训练集={len(train_dataset)}, 验证集={len(valid_dataset)}, 测试集={len(test_dataset)}")
 
+    # 打印数据维度以帮助调试
+    print("\n==== 数据维度检查 ====")
+    try:
+        # 检查第一个训练数据点
+        train_sample = train_dataset[0]
+        print(f"训练样本类型: {type(train_sample)}")
+        print(f"训练样本主图特征维度: x={train_sample[0].x.shape}, edge_attr={train_sample[0].edge_attr.shape}")
+        print(f"训练样本MPC检索图数量: {len(train_sample[1])}")
+        print(f"训练样本NRE检索图数量: {len(train_sample[2])}")
+        
+        # 检查一个MPC检索图和NRE检索图
+        if len(train_sample[1]) > 0:
+            print(f"MPC检索图特征维度: x={train_sample[1][0].x.shape}, edge_attr={train_sample[1][0].edge_attr.shape}")
+        if len(train_sample[2]) > 0:
+            print(f"NRE检索图特征维度: x={train_sample[2][0].x.shape}, edge_attr={train_sample[2][0].edge_attr.shape}")
+        
+        # 加载模型输入前打印批次维度
+        first_batch = next(iter(train_loader))
+        print(f"批次0主图节点特征: {first_batch[0].x.shape}")
+        print(f"批次0主图边特征: {first_batch[0].edge_attr.shape}")
+        print(f"批次0 MPC图数量: {len(first_batch[1])}")
+        print(f"批次0 NRE图数量: {len(first_batch[2])}")
+    except Exception as e:
+        print(f"数据检查时出错: {e}")
+
     gnn = args.gnn
     layers = args.layers
     input_dim = args.input_dim
@@ -115,6 +140,18 @@ def main():
     os.makedirs("./experiments", exist_ok=True)
     
     f = open(result_file, "a")
+
+    # 打印模型配置
+    print("\n==== 模型配置 ====")
+    print(f"GNN: {gnn}")
+    print(f"隐藏层维度: {hidden_dim}")
+    print(f"输入维度: {input_dim}")
+    print(f"边特征维度: {n_bond_feat}")
+    print(f"输出维度: {output_dim}")
+    print(f"网络层数: {layers}")
+    print(f"Transformer层数: {t_layers}")
+    print(f"Self-Attention层数: {t_layers_sa}")
+    print(f"注意力头数: {num_heads}")
 
     if embedder == 'Retrieval_Retro': 
         model = Retrieval_Retro(gnn, layers, input_dim, output_dim, hidden_dim, n_bond_feat, device, t_layers, t_layers_sa, num_heads).to(device)
@@ -137,9 +174,66 @@ def main():
         train_loss = 0
         model.train()
         for bc, batch in enumerate(train_loader):
+            # 添加详细的维度检查
+            if bc == 0:
+                try:
+                    print(f"\n[批次调试] 批次{bc}:")
+                    print(f"主图节点数量: {batch[0].x.size(0)}")
+                    print(f"主图节点特征维度: {batch[0].x.shape}")
+                    print(f"主图批次大小: {len(batch[0].ptr)-1}")
+                    
+                    # 检查MPC检索结果
+                    mpc_graph = batch[1]
+                    print(f"MPC图总数: {mpc_graph.x.size(0)}")
+                    print(f"MPC图节点特征维度: {mpc_graph.x.shape}")
+                    
+                    # 检查NRE检索结果
+                    nre_graph = batch[2]
+                    print(f"NRE图总数: {nre_graph.x.size(0)}")
+                    print(f"NRE图节点特征维度: {nre_graph.x.shape}")
+                    
+                    # 打印hidden_dim，确认其值
+                    print(f"模型hidden_dim: {hidden_dim}")
+                    print(f"模型fusion_linear层输入预期维度: {hidden_dim*2}")
+                    print(f"模型fusion_linear层输出预期维度: {hidden_dim}")
+                except Exception as e:
+                    print(f"批次检查时出错: {e}")
 
             y = batch[0].y_lb_one.reshape(len(batch[0].ptr)-1, -1)
-            template_output = model(batch)
+            
+            # 添加try-except包装模型前向传播，以提供更详细的错误信息
+            try:
+                print(f"\n开始调用模型前向传播...")
+                template_output = model(batch)
+                print(f"模型前向传播成功完成!")
+            except Exception as e:
+                print(f"\n模型前向传播中出现错误: {e}")
+                # 尝试进一步分析错误
+                try:
+                    # 检查模型各组件输入维度
+                    main_graph = batch[0].to(device)
+                    additional_graph = batch[1]
+                    additional_graph_2 = batch[2]
+                    
+                    # GNN处理
+                    main_graph_x = model.gnn(main_graph)
+                    print(f"主图GNN输出维度: {main_graph_x.shape}")
+                    
+                    main_weighted_x = main_graph_x * main_graph.fc_weight.reshape(-1, 1)
+                    main_graph_emb = torch.scatter_add(main_weighted_x, dim=0, index=main_graph.batch.view(-1, 1).repeat(1, main_weighted_x.size(1)))
+                    print(f"主图嵌入维度: {main_graph_emb.shape}")
+                    
+                    # 尝试处理一个检索图
+                    if len(additional_graph) > 0:
+                        add_graph = additional_graph[0].to(device)
+                        add_graph_x = model.gnn(add_graph)
+                        print(f"检索图GNN输出维度: {add_graph_x.shape}")
+                except Exception as nested_e:
+                    print(f"无法分析错误: {nested_e}")
+                
+                # 终止当前批次，尝试下一个批次
+                continue
+                
             loss_template = bce_loss(template_output, y)
 
             loss = loss_template
