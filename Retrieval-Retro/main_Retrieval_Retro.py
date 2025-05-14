@@ -57,29 +57,43 @@ def main():
     configuration = utils_main.exp_get_name_RetroPLEX(train_config)
     print(f'configuration: {configuration}')
 
-
-    args.device = 7
-    # GPU setting
+    # 使用命令行参数中的设备ID
     device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(device)
-    print(device)
+    print(f"使用设备: {device}")
+    print(f"数据集拆分: {args.split}")
+    print(f"检索数量K: {args.K}")
+    
     seed_everything(seed=args.seed)
-
 
     args.eval = 5
     args.retrieval = 'ours'
-    args.split = 'year'
     args.embedder = 'Retrieval_Retro'
 
-    train_dataset = torch.load(f'./dataset/{args.split}/year_train_K_{args.K}.pt',map_location=device, weights_only=False)
-    valid_dataset = torch.load(f'./dataset/{args.split}/year_valid_K_{args.K}.pt',map_location=device, weights_only=False)
-    test_dataset = torch.load(f'./dataset/{args.split}/year_test_K_{args.K}.pt',map_location=device, weights_only=False)
+    # 修改数据加载路径，使用args.split而不是硬编码"year"
+    print(f"加载数据集: {args.split}")
+    train_file = f'./dataset/{args.split}/train_K_{args.K}.pt'
+    valid_file = f'./dataset/{args.split}/valid_K_{args.K}.pt'
+    test_file = f'./dataset/{args.split}/test_K_{args.K}.pt'
+    
+    print(f"训练集文件: {train_file}")
+    print(f"验证集文件: {valid_file}")
+    print(f"测试集文件: {test_file}")
+    
+    try:
+        train_dataset = torch.load(train_file, map_location=device, weights_only=False)
+        valid_dataset = torch.load(valid_file, map_location=device, weights_only=False)
+        test_dataset = torch.load(test_file, map_location=device, weights_only=False)
+    except Exception as e:
+        print(f"错误: 无法加载数据集文件: {e}")
+        return
 
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle=True, collate_fn = custom_collate_fn)
     valid_loader = DataLoader(valid_dataset, batch_size = 1, collate_fn = custom_collate_fn)
     test_loader = DataLoader(test_dataset, batch_size = 1, collate_fn = custom_collate_fn)
 
-    print("Dataset Loaded!")
+    print("数据集加载完成!")
+    print(f"数据集大小: 训练集={len(train_dataset)}, 验证集={len(valid_dataset)}, 测试集={len(test_dataset)}")
 
     gnn = args.gnn
     layers = args.layers
@@ -93,7 +107,14 @@ def main():
     t_layers_sa = args.t_layers_sa
     thres = 'normal'
 
-    f = open(f"./experiments/Retrieval_Retro_{args.batch_size}_{args.retrieval}_{args.embedder}_{args.split}_{args.K}_result.txt", "a")
+    # 在结果文件名中添加数据集标识
+    result_file = f"./experiments/Retrieval_Retro_{args.batch_size}_{args.retrieval}_{args.embedder}_{args.split}_{args.K}_result.txt"
+    print(f"结果将保存到: {result_file}")
+    
+    # 确保experiments目录存在
+    os.makedirs("./experiments", exist_ok=True)
+    
+    f = open(result_file, "a")
 
     if embedder == 'Retrieval_Retro': 
         model = Retrieval_Retro(gnn, layers, input_dim, output_dim, hidden_dim, n_bond_feat, device, t_layers, t_layers_sa, num_heads).to(device)
@@ -238,9 +259,10 @@ def main():
                 if len(best_acc_list) > int(args.es / args.eval):
                     if best_acc_list[-1] == best_acc_list[-int(args.es / args.eval)]:
                         print(f'!!Early Stop!!')
-                        print(f'[FINAL]_MULTI: {best_state_multi}')
-                        print(f'[FINAL]_MULTI: {best_state_recall}')
+                        print(f'[数据集: {args.split}] [FINAL]_MULTI: {best_state_multi}')
+                        print(f'[数据集: {args.split}] [FINAL]_MULTI: {best_state_recall}')
                         f.write("\n")
+                        f.write(f"数据集: {args.split}\n")
                         f.write("Early stop!!\n")
                         f.write(configuration)
                         f.write(f"\nbest epoch : {best_epoch}")
@@ -254,19 +276,19 @@ def main():
 
 
     print(f'Training Done not early stopping')
-    print(f'[FINAL]_MULTI: {best_state_multi}')
+    print(f'[数据集: {args.split}] [FINAL]_MULTI: {best_state_multi}')
     f.write("\n")
-    f.write("Early stop!!\n")
+    f.write(f"数据集: {args.split}\n")
+    f.write("Not early stopping!!\n")
     f.write(configuration)
     f.write(f"\nbest epoch : {best_epoch}")
-    f.write(f"\nbest Top-1 ACC ONE: {multi_top_1_acc:.4f}")
-    f.write(f"\nbest Top-3 ACC ONE: {multi_top_3_acc:.4f}")
-    f.write(f"\nbest Top-5 ACC ONE: {multi_top_5_acc:.4f}")
-    f.write(f"\nbest Top-10 ACC ONE: {multi_top_10_acc:.4f}")
+    f.write(f"\nbest Top-1 ACC  MULTI: {multi_top_1_acc:.4f}")
+    f.write(f"\nbest Top-3 ACC MULTI: {multi_top_3_acc:.4f}")
+    f.write(f"\nbest Top-5 ACC MULTI: {multi_top_5_acc:.4f}")
+    f.write(f"\nbest Top-10 ACC MULTI: {multi_top_10_acc:.4f}")
     f.write(f"\nbest Micro Recall: {test_micro:.4f}")
     f.write(f"\nbest Macro Recall: {test_macro:.4f}")
     f.close()
 
 if __name__ == "__main__":
-
     main()

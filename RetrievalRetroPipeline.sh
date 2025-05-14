@@ -45,8 +45,8 @@ fi
 DATASET_NAME="$1"
 
 # 设置默认路径为当前工作目录下的对应文件夹
-DEFAULT_PROCEED_DIR="./data_processing"
-DEFAULT_RETRO_DIR="./Retrieval-Retro"
+DEFAULT_PROCEED_DIR="$(pwd)/data_processing"
+DEFAULT_RETRO_DIR="$(pwd)/Retrieval-Retro"
 
 # 检查是否提供了自定义路径
 if [ "$#" -ge 3 ]; then
@@ -70,6 +70,29 @@ else
     # 可选参数，设置默认值
     GPU_ID="${2:-0}"
     K_VALUE="${3:-3}"
+fi
+
+# 确保路径是绝对路径
+if [[ ! "$PROCEED_DIR" == /* ]]; then
+    # 如果是相对路径，转换为绝对路径
+    if [[ "$PROCEED_DIR" == ./* ]]; then
+        # 如果以./开头，从当前目录解析
+        PROCEED_DIR="$(pwd)/${PROCEED_DIR:2}"
+    else
+        # 否则直接添加当前目录
+        PROCEED_DIR="$(pwd)/$PROCEED_DIR"
+    fi
+fi
+
+if [[ ! "$RETRO_DIR" == /* ]]; then
+    # 如果是相对路径，转换为绝对路径
+    if [[ "$RETRO_DIR" == ./* ]]; then
+        # 如果以./开头，从当前目录解析
+        RETRO_DIR="$(pwd)/${RETRO_DIR:2}"
+    else
+        # 否则直接添加当前目录
+        RETRO_DIR="$(pwd)/$RETRO_DIR"
+    fi
 fi
 
 echo "=== 配置信息 ==="
