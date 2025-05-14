@@ -48,7 +48,7 @@ def make_retrieved(mode, split, rank_matrix, k, seed):
 def main():
     args = utils_main.parse_args()
     train_config = utils_main.training_config(args)
-    configuration = utils_main.exp_get_name1(train_config)
+    configuration = utils_main.exp_get_name_RetroPLEX(train_config)
     print(f'configuration: {configuration}')
 
 

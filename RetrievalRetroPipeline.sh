@@ -4,17 +4,19 @@
 # 用途：从原始数据生成到模型训练的全流程自动化脚本
 # 
 # 使用方法：
-# ./RetrievalRetroPipeline.sh <数据处理文件夹路径> <Retrieval-Retro仓库路径> <数据集名称> [GPU_ID] [K_VALUE]
+# ./RetrievalRetroPipeline.sh <数据集名称> [数据处理文件夹路径] [Retrieval-Retro仓库路径] [GPU_ID] [K_VALUE]
 #
 # 参数说明：
-# <数据处理文件夹路径>：包含原始数据和处理脚本的目录，如：/home/user/data_processing
-# <Retrieval-Retro仓库路径>：Retrieval-Retro代码库的目录，如：/home/user/Retrieval-Retro
 # <数据集名称>：要处理的数据集名称，如：ceder
+# [数据处理文件夹路径]：可选，包含原始数据和处理脚本的目录，默认为./data_processing
+# [Retrieval-Retro仓库路径]：可选，Retrieval-Retro代码库的目录，默认为./Retrieval-Retro
 # [GPU_ID]：可选，指定使用的GPU ID，默认为0
 # [K_VALUE]：可选，检索的材料数量，默认为3
 #
 # 示例：
-# ./RetrievalRetroPipeline.sh /home/user/data_processing /home/user/Retrieval-Retro ceder 0 3
+# ./RetrievalRetroPipeline.sh ceder                            # 使用默认路径
+# ./RetrievalRetroPipeline.sh ceder ./my_data                  # 自定义数据处理文件夹路径
+# ./RetrievalRetroPipeline.sh ceder ./my_data ./my_retro 0 3   # 自定义所有参数
 #
 # 数据流流程说明：
 # 1. 从原始数据生成前驱体图数据 (${DATASET_NAME}_precursor_graph.pt)
@@ -32,25 +34,48 @@
 set -e
 
 # 获取命令行参数
-if [ "$#" -lt 3 ]; then
+if [ "$#" -lt 1 ]; then
     echo "错误: 缺少必要参数"
-    echo "用法: $0 <数据处理文件夹路径> <Retrieval-Retro仓库路径> <数据集名称> [GPU_ID] [K_VALUE]"
-    echo "示例: $0 /home/user/proceed /home/user/Retrieval-Retro ceder 0 3"
+    echo "用法: $0 <数据集名称> [数据处理文件夹路径] [Retrieval-Retro仓库路径] [GPU_ID] [K_VALUE]"
+    echo "示例: $0 ceder [./data_processing] [./Retrieval-Retro] [0] [3]"
     exit 1
 fi
 
-PROCEED_DIR="$1"
-RETRO_DIR="$2"
-DATASET_NAME="$3"
+# 设置参数，现在数据集名称是第一个参数
+DATASET_NAME="$1"
 
-# 可选参数，设置默认值
-GPU_ID="${4:-0}"
-K_VALUE="${5:-3}"
+# 设置默认路径为当前工作目录下的对应文件夹
+DEFAULT_PROCEED_DIR="./data_processing"
+DEFAULT_RETRO_DIR="./Retrieval-Retro"
+
+# 检查是否提供了自定义路径
+if [ "$#" -ge 3 ]; then
+    # 如果提供了至少3个参数，使用第2和第3个参数作为路径
+    PROCEED_DIR="$2"
+    RETRO_DIR="$3"
+    # 可选参数，设置默认值
+    GPU_ID="${4:-0}"
+    K_VALUE="${5:-3}"
+elif [ "$#" -ge 2 ]; then
+    # 如果只提供了2个参数，第2个参数是PROCEED_DIR，RETRO_DIR使用默认值
+    PROCEED_DIR="$2"
+    RETRO_DIR="$DEFAULT_RETRO_DIR"
+    # 可选参数，设置默认值
+    GPU_ID="${3:-0}"
+    K_VALUE="${4:-3}"
+else
+    # 如果只提供了1个参数，使用默认路径
+    PROCEED_DIR="$DEFAULT_PROCEED_DIR"
+    RETRO_DIR="$DEFAULT_RETRO_DIR"
+    # 可选参数，设置默认值
+    GPU_ID="${2:-0}"
+    K_VALUE="${3:-3}"
+fi
 
 echo "=== 配置信息 ==="
+echo "数据集名称: $DATASET_NAME"
 echo "数据处理文件夹: $PROCEED_DIR"
 echo "Retrieval-Retro仓库: $RETRO_DIR"
-echo "数据集名称: $DATASET_NAME"
 echo "GPU ID: $GPU_ID"
 echo "K值: $K_VALUE"
 
@@ -192,12 +217,18 @@ PRECURSOR_GRAPH_FILE="$PROCEED_DIR/proceed/${DATASET_NAME}_precursor_graph.pt"
 if [ -f "$PRECURSOR_GRAPH_FILE" ]; then
     echo "✓ 已存在前驱体图数据: $PRECURSOR_GRAPH_FILE，跳过生成步骤"
 else
+    # 保存当前目录
+    ORIGINAL_DIR=$(pwd)
     cd "$PROCEED_DIR"
     python generate_precursor_graph_pt.py "$DATASET_NAME"
     if [ $? -ne 0 ]; then
         echo "生成前驱体图数据失败"
+        # 返回原目录
+        cd "$ORIGINAL_DIR"
         exit 1
     fi
+    # 返回原目录
+    cd "$ORIGINAL_DIR"
 fi
 
 # 2. 生成MPC训练/验证/测试数据集
@@ -213,12 +244,18 @@ if [ -f "$MPC_TRAIN_FILE" ] && [ -f "$MPC_VAL_FILE" ] && [ -f "$MPC_TEST_FILE" ]
     echo "  - $MPC_TEST_FILE"
     echo "  跳过生成步骤"
 else
+    # 保存当前目录
+    ORIGINAL_DIR=$(pwd)
     cd "$PROCEED_DIR"
     python generate_mpc_split_data.py "$DATASET_NAME"
     if [ $? -ne 0 ]; then
         echo "生成MPC数据集失败"
+        # 返回原目录
+        cd "$ORIGINAL_DIR"
         exit 1
     fi
+    # 返回原目录
+    cd "$ORIGINAL_DIR"
 fi
 
 # 3. 将生成的文件复制到Retrieval-Retro目录
@@ -232,6 +269,8 @@ echo "✓ 已复制数据文件到Retrieval-Retro目录"
 
 # 4. 训练MPC模型
 echo -e "\n步骤4: 训练MPC模型"
+# 保存当前目录
+ORIGINAL_DIR=$(pwd)
 cd "$RETRO_DIR"
 
 # 检查嵌入向量文件是否存在
@@ -257,8 +296,14 @@ else
     fi
 fi
 
+# 在训练MPC模型部分结束时返回原目录
+cd "$ORIGINAL_DIR"
+
 # 5. 使用MPC模型进行检索
 echo -e "\n步骤5: 使用MPC模型进行检索（生成第一组候选集）"
+# 保存当前目录并切换
+ORIGINAL_DIR=$(pwd)
+cd "$RETRO_DIR"
 
 # 检查MPC检索结果是否存在
 MPC_TRAIN_RESULT="./dataset/${DATASET_NAME}/train_mpc_retrieved_${K_VALUE}"
@@ -286,8 +331,14 @@ else
     fi
 fi
 
+# 在步骤结束时返回原目录
+cd "$ORIGINAL_DIR"
+
 # 6. 计算形成能并进行NRE检索
 echo -e "\n步骤6: 计算形成能并进行NRE检索（生成第二组候选集）"
+# 保存当前目录并切换
+ORIGINAL_DIR=$(pwd)
+cd "$RETRO_DIR"
 
 # 检查NRE检索结果是否存在
 NRE_TRAIN_RESULT="./dataset/${DATASET_NAME}/train_nre_retrieved_${K_VALUE}"
@@ -313,12 +364,19 @@ else
     python calculate_gibbs.py --split "${DATASET_NAME}" --K "${K_VALUE}" --device "${GPU_ID}"
     if [ $? -ne 0 ]; then
         echo "计算形成能和NRE检索失败"
+        cd "$ORIGINAL_DIR"
         exit 1
     fi
 fi
 
+# 返回原目录
+cd "$ORIGINAL_DIR"
+
 # 7. 整合MPC和NRE检索结果
 echo -e "\n步骤7: 整合MPC和NRE检索结果（合并两组候选集）"
+# 保存当前目录并切换
+ORIGINAL_DIR=$(pwd)
+cd "$RETRO_DIR"
 
 # 检查整合结果是否存在
 FINAL_TRAIN_RESULT="./dataset/${DATASET_NAME}/train_final_mpc_nre_K_${K_VALUE}.pt"
@@ -333,11 +391,13 @@ else
     # 检查MPC和NRE检索结果是否都存在
     if [ ! -f "$MPC_TRAIN_RESULT" ] || [ ! -f "$MPC_VALID_RESULT" ] || [ ! -f "$MPC_TEST_RESULT" ]; then
         echo "错误: MPC检索结果不完整，无法进行整合"
+        cd "$ORIGINAL_DIR"
         exit 1
     fi
     
     if [ ! -f "$NRE_TRAIN_RESULT" ] || [ ! -f "$NRE_VALID_RESULT" ] || [ ! -f "$NRE_TEST_RESULT" ]; then
         echo "错误: NRE检索结果不完整，无法进行整合"
+        cd "$ORIGINAL_DIR"
         exit 1
     fi
     
@@ -346,12 +406,19 @@ else
     python collate.py --mode test --split "${DATASET_NAME}" --K "${K_VALUE}" --device "${GPU_ID}"
     if [ $? -ne 0 ]; then
         echo "整合检索结果失败"
+        cd "$ORIGINAL_DIR"
         exit 1
     fi
 fi
 
+# 返回原目录
+cd "$ORIGINAL_DIR"
+
 # 8. 将最终文件移动到正确位置
 echo -e "\n步骤8: 将最终文件移动到正确位置"
+# 保存当前目录并切换
+ORIGINAL_DIR=$(pwd)
+cd "$RETRO_DIR"
 
 # 检查最终训练文件是否存在
 TRAIN_FILE="./dataset/${DATASET_NAME}/train_K_${K_VALUE}.pt"
@@ -369,8 +436,14 @@ else
     cp "./dataset/${DATASET_NAME}/test_final_mpc_nre_K_${K_VALUE}.pt" "./dataset/${DATASET_NAME}/test_K_${K_VALUE}.pt"
 fi
 
+# 返回原目录
+cd "$ORIGINAL_DIR"
+
 # 9. 运行主模型
 echo -e "\n步骤9: 运行Retrieval-Retro主模型"
+# 保存当前目录并切换
+ORIGINAL_DIR=$(pwd)
+cd "$RETRO_DIR"
 
 # 检查模型结果文件是否存在
 RESULT_FILE="./experiments/Retrieval_Retro_32_ours_Retrieval_Retro_${DATASET_NAME}_${K_VALUE}_result.txt"
@@ -381,6 +454,9 @@ else
     echo "模型结果文件不存在，开始训练主模型..."
     python main_Retrieval_Retro.py --device ${GPU_ID} --K ${K_VALUE} --batch_size 32 --hidden_dim 64 --epochs 20 --lr 0.0005 --es 30 --split ${DATASET_NAME}
 fi
+
+# 返回原目录
+cd "$ORIGINAL_DIR"
 
 echo -e "\n=== 处理完成! ==="
 echo "已生成并运行完毕:"

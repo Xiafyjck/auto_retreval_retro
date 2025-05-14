@@ -60,9 +60,9 @@ def compute_rank_in_batches(tensor, batch_size):
     
     return ranked_tensor
 
-def make_retrieved(mode,rank_matrix, k):
+def make_retrieved(mode, rank_matrix, k):
      
-    save_path = f'./dataset/year_{mode}_mpc_retrieved_{k}'
+    save_path = f'./dataset/{args.split}/{mode}_mpc_retrieved_{k}'
 
     candidate_list = defaultdict(list)
 
@@ -77,8 +77,7 @@ def make_retrieved(mode,rank_matrix, k):
 
 def main():
 
-
-    device = torch.device(f'cuda:{6}' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(device)
     print(device)
 
@@ -109,7 +108,7 @@ def main():
         elif idx == 2:
             mode = 'test'
 
-        make_retrieved(mode, matrix, 3)
+        make_retrieved(mode, matrix, args.K)
 
 
 if __name__ == "__main__":
