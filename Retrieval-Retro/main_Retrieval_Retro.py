@@ -71,9 +71,9 @@ def main():
     args.split = 'year'
     args.embedder = 'RetroPLEX'
 
-    train_dataset = torch.load(f'./dataset/year/year_train_K_3.pt',map_location=device)
-    valid_dataset = torch.load(f'./dataset/year/year_valid_K_3.pt',map_location=device)
-    test_dataset = torch.load(f'./dataset/year/year_test_K_3.pt',map_location=device)
+    train_dataset = torch.load(f'./dataset/year/year_train_K_3.pt',map_location=device, weights_only=False)
+    valid_dataset = torch.load(f'./dataset/year/year_valid_K_3.pt',map_location=device, weights_only=False)
+    test_dataset = torch.load(f'./dataset/year/year_test_K_3.pt',map_location=device, weights_only=False)
 
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle=True, collate_fn = custom_collate_fn)
     valid_loader = DataLoader(valid_dataset, batch_size = 1, collate_fn = custom_collate_fn)

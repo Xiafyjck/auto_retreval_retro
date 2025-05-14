@@ -11,9 +11,9 @@ print(device)
 
 def main(mode, K):
 
-    train_dataset = torch.load('./dataset/year/year_train_mpc.pt')
-    valid_dataset = torch.load('./dataset/year/year_valid_mpc.pt')
-    test_dataset = torch.load('./dataset/year/year_test_mpc.pt')
+    train_dataset = torch.load('./dataset/year/year_train_mpc.pt', weights_only=False)
+    valid_dataset = torch.load('./dataset/year/year_valid_mpc.pt', weights_only=False)
+    test_dataset = torch.load('./dataset/year/year_test_mpc.pt', weights_only=False)
 
     save_path = f'./dataset/year_{mode}_mpc_retrieved_{K}'
     save_path_2 = f'./dataset/year_{mode}_nre_final_retrieved_{K}'

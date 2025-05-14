@@ -14,9 +14,9 @@ def make_sim_mpc(device):
     load_path_valid = f'./dataset/valid_year_mpc_embeddings.pt'
     load_path_test = f'./dataset/test_year_mpc_embeddings.pt'
 
-    train_emb = torch.load(load_path_train, map_location = device).squeeze(1)
-    valid_emb = torch.load(load_path_valid, map_location = device).squeeze(1)
-    test_emb = torch.load(load_path_test, map_location = device).squeeze(1)
+    train_emb = torch.load(load_path_train, map_location = device, weights_only=False).squeeze(1)
+    valid_emb = torch.load(load_path_valid, map_location = device, weights_only=False).squeeze(1)
+    test_emb = torch.load(load_path_test, map_location = device, weights_only=False).squeeze(1)
 
     train_emb_norm = F.normalize(train_emb, p=2, dim=1)
     valid_emb_norm = F.normalize(valid_emb, p=2, dim=1)
@@ -78,9 +78,9 @@ def main():
 
     make_sim_mpc(device)
 
-    yr_mpc_train = torch.load(f"./dataset/train_year_mpc_cos_sim_matrix.pt", map_location=device)
-    yr_mpc_valid = torch.load(f"./dataset/valid_year_mpc_cos_sim_matrix.pt", map_location=device)
-    yr_mpc_test = torch.load(f"./dataset/test_year_mpc_cos_sim_matrix.pt", map_location=device)
+    yr_mpc_train = torch.load(f"./dataset/train_year_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
+    yr_mpc_valid = torch.load(f"./dataset/valid_year_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
+    yr_mpc_test = torch.load(f"./dataset/test_year_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
 
     batch_size = 1000
     rank_mpc_train = compute_rank_in_batches(yr_mpc_train, batch_size)

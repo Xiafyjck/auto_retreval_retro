@@ -70,7 +70,7 @@ def main():
 
     # Load dataset
     if args.pretrain == "formation_exp":
-        dataset = torch.load('./dataset/exp_formation_energy.pt', map_location=device)
+        dataset = torch.load('./dataset/exp_formation_energy.pt', map_location=device, weights_only=False)
 
     else:
         print("wrong pretraining dataset")
