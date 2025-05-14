@@ -44,9 +44,9 @@ def main():
     print(device)
     seed_everything(seed=args.seed)
 
-    train_dataset = torch.load('./dataset/year/year_train_mpc.pt',map_location=device, weights_only=False)
-    valid_dataset = torch.load('./dataset/year/year_valid_mpc.pt',map_location=device, weights_only=False)
-    test_dataset = torch.load('./dataset/year/year_test_mpc.pt',map_location=device, weights_only=False)
+    train_dataset = torch.load(f'./dataset/{args.split}/train_mpc.pt',map_location=device, weights_only=False)
+    valid_dataset = torch.load(f'./dataset/{args.split}/valid_mpc.pt',map_location=device, weights_only=False)
+    test_dataset = torch.load(f'./dataset/{args.split}/test_mpc.pt',map_location=device, weights_only=False)
 
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle=True) 
     valid_loader = DataLoader(valid_dataset, batch_size = 1)

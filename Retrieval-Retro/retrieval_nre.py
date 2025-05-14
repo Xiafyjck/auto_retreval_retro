@@ -60,9 +60,9 @@ def main():
     print(device)
     seed_everything(seed=args.seed)
 
-    nre_train = f'./dataset/year_train_nre_retrieved_{K}'
-    nre_valid = f'./dataset/year_valid_nre_retrieved_{K}'
-    nre_test = f'./dataset/year_test_nre_retrieved_{K}'
+    nre_train = f'./dataset/{args.split}/train_nre_retrieved_{K}'
+    nre_valid = f'./dataset/{args.split}/valid_nre_retrieved_{K}'
+    nre_test = f'./dataset/{args.split}/test_nre_retrieved_{K}'
 
     with open(nre_train, 'r') as f:
         reaction_train = json.load(f)
@@ -74,9 +74,9 @@ def main():
         reaction_test = json.load(f)
 
 
-    mpc_train = f'./dataset/year_train_mpc_retrieved_{K}'
-    mpc_valid = f'./dataset/year_valid_mpc_retrieved_{K}'
-    mpc_test = f'./dataset/year_test_mpc_retrieved_{K}'
+    mpc_train = f'./dataset/{args.split}/train_mpc_retrieved_{K}'
+    mpc_valid = f'./dataset/{args.split}/valid_mpc_retrieved_{K}'
+    mpc_test = f'./dataset/{args.split}/test_mpc_retrieved_{K}'
 
 
     with open(mpc_train, 'r') as f:
@@ -104,7 +104,7 @@ def main():
 
         reaction_mpc_train[idx] = reaction[:K]
     
-    save_path = f'./dataset/year_train_nre_final_retrieved_{K}'
+    save_path = f'./dataset/{args.split}/train_nre_final_retrieved_{K}'
     with open(save_path, 'w') as f:
         json.dump(reaction_mpc_train, f)
 
@@ -122,7 +122,7 @@ def main():
             reaction.extend(mpc[:shortage])
         reaction_mpc_valid[idx] = reaction[:K]
     
-    save_path = f'./dataset/year_valid_nre_final_retrieved_{K}'
+    save_path = f'./dataset/{args.split}/valid_nre_final_retrieved_{K}'
     with open(save_path, 'w') as f:
         json.dump(reaction_mpc_valid, f)
 
@@ -142,7 +142,7 @@ def main():
 
         reaction_mpc_test[idx] = reaction[:K]
 
-    save_path = f'./dataset/year_test_nre_final_retrieved_{K}'
+    save_path = f'./dataset/{args.split}/test_nre_final_retrieved_{K}'
     with open(save_path, 'w') as f:
         json.dump(reaction_mpc_test, f)
 

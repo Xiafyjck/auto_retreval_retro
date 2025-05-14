@@ -3,6 +3,11 @@ from torch_geometric.data import Data, Batch
 import numpy as np
 from torch_geometric.loader import DataLoader
 import json
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--split', type=str, default='year')
+args = parser.parse_args()
 
 device = torch.device(f'cuda:{5}' if torch.cuda.is_available() else 'cpu')
 torch.cuda.set_device(device)
@@ -11,12 +16,12 @@ print(device)
 
 def main(mode, K):
 
-    train_dataset = torch.load('./dataset/year/year_train_mpc.pt', weights_only=False)
-    valid_dataset = torch.load('./dataset/year/year_valid_mpc.pt', weights_only=False)
-    test_dataset = torch.load('./dataset/year/year_test_mpc.pt', weights_only=False)
+    train_dataset = torch.load(f'./dataset/{args.split}/train_mpc.pt', weights_only=False)
+    valid_dataset = torch.load(f'./dataset/{args.split}/valid_mpc.pt', weights_only=False)
+    test_dataset = torch.load(f'./dataset/{args.split}/test_mpc.pt', weights_only=False)
 
-    save_path = f'./dataset/year_{mode}_mpc_retrieved_{K}'
-    save_path_2 = f'./dataset/year_{mode}_nre_final_retrieved_{K}'
+    save_path = f'./dataset/{args.split}/{mode}_mpc_retrieved_{K}'
+    save_path_2 = f'./dataset/{args.split}/{mode}_nre_final_retrieved_{K}'
 
     with open(save_path, "r") as f:
         candi_data = json.load(f)
@@ -70,7 +75,7 @@ def main(mode, K):
         new_data.append(tuple(tmp))
 
 
-    torch.save(new_data, f"./dataset/year_{mode}_final_mpc_nre_K_{K}.pt")
+    torch.save(new_data, f"./dataset/{args.split}/{mode}_final_mpc_nre_K_{K}.pt")
 
 if __name__ == "__main__":
     from tqdm import tqdm

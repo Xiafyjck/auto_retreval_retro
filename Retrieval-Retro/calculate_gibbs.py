@@ -33,7 +33,7 @@ def seed_everything(seed):
 def make_retrieved(mode, split, rank_matrix, k, seed):
      
 
-    save_path = f'./dataset/year_{mode}_nre_retrieved_{k}'
+    save_path = f'./dataset/{split}_{mode}_nre_retrieved_{k}'
     
 
     candidate_list = defaultdict(list)
@@ -58,12 +58,12 @@ def main():
     print(device)
     seed_everything(seed=args.seed)
 
-    precursor_graph = torch.load("./dataset/year_precursor_graph.pt", map_location=device, weights_only=False)
+    precursor_graph = torch.load(f"./dataset/{args.split}/precursor_graph.pt", map_location=device, weights_only=False)
     precursor_loader = DataLoader(precursor_graph, batch_size = 1, shuffle=False)
 
-    train_dataset = torch.load('./dataset/year/year_train_mpc.pt', weights_only=False)
-    valid_dataset = torch.load('./dataset/year/year_valid_mpc.pt', weights_only=False)
-    test_dataset = torch.load('./dataset/year/year_test_mpc.pt', weights_only=False)
+    train_dataset = torch.load(f'./dataset/{args.split}/train_mpc.pt', weights_only=False)
+    valid_dataset = torch.load(f'./dataset/{args.split}/valid_mpc.pt', weights_only=False)
+    test_dataset = torch.load(f'./dataset/{args.split}/test_mpc.pt', weights_only=False)
 
     train_loader = DataLoader(train_dataset, batch_size = 1, shuffle=False)
     valid_loader = DataLoader(valid_dataset, batch_size = 1)
@@ -100,7 +100,7 @@ def main():
 
             precursor_formation_list.append(y)
         precursor_y_tensor = torch.stack(precursor_formation_list)
-        torch.save(precursor_y_tensor, f'./dataset/{args.split}_precursor_formation_energy.pt')
+        torch.save(precursor_y_tensor, f'./dataset/{args.split}/precursor_formation_energy.pt')
 
         for bc, batch in enumerate(train_loader):
             batch.to(device)
@@ -109,7 +109,7 @@ def main():
 
             train_formation_list.append(y)
         train_y_tensor = torch.stack(train_formation_list)
-        torch.save(train_y_tensor, f'./dataset/{args.split}_train_formation_energy.pt')
+        torch.save(train_y_tensor, f'./dataset/{args.split}/train_formation_energy.pt')
 
         for bc, batch in enumerate(valid_loader):
             batch.to(device)
@@ -118,7 +118,7 @@ def main():
 
             valid_formation_list.append(y)
         valid_y_tensor = torch.stack(valid_formation_list)
-        torch.save(valid_y_tensor, f'./dataset/{args.split}_valid_formation_energy.pt')
+        torch.save(valid_y_tensor, f'./dataset/{args.split}/valid_formation_energy.pt')
 
         for bc, batch in enumerate(test_loader):
             batch.to(device)
@@ -127,12 +127,12 @@ def main():
 
             test_formation_list.append(y)
         test_y_tensor = torch.stack(test_formation_list)
-        torch.save(test_y_tensor, f'./dataset/{args.split}_test_formation_energy.pt')
+        torch.save(test_y_tensor, f'./dataset/{args.split}/test_formation_energy.pt')
     
-    precursor_formation_y = torch.load('./dataset/year_precursor_formation_energy.pt',map_location=device, weights_only=False)
-    train_formation_y = torch.load('./dataset/year_train_formation_energy.pt', map_location=device, weights_only=False)
-    valid_formation_y = torch.load('./dataset/year_valid_formation_energy.pt', map_location=device, weights_only=False)
-    test_formation_y = torch.load('./dataset/year_test_formation_energy.pt', map_location=device, weights_only=False)
+    precursor_formation_y = torch.load(f'./dataset/{args.split}/precursor_formation_energy.pt',map_location=device, weights_only=False)
+    train_formation_y = torch.load(f'./dataset/{args.split}/train_formation_energy.pt', map_location=device, weights_only=False)
+    valid_formation_y = torch.load(f'./dataset/{args.split}/valid_formation_energy.pt', map_location=device, weights_only=False)
+    test_formation_y = torch.load(f'./dataset/{args.split}/test_formation_energy.pt', map_location=device, weights_only=False)
     K = args.K
 
     # For Train
@@ -151,7 +151,7 @@ def main():
 
     # Stack the differences and add a large value to the diagonal
     train_matrix = torch.stack(train_idx) + torch.eye(len(train_dataset)) * 100000
-    torch.save(train_matrix, f'./dataset/{args.split}_train_formation_energy_calculation_delta_G.pt')
+    torch.save(train_matrix, f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt')
     make_retrieved('train','year', train_matrix, K, 0)
 
     # For Valid
@@ -170,7 +170,7 @@ def main():
 
     # Stack the differences and add a large value to the diagonal
     valid_matrix = torch.stack(valid_idx) 
-    torch.save(valid_matrix, f'./dataset/{args.split}_valid_formation_energy_calculation_delta_G.pt')
+    torch.save(valid_matrix, f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt')
 
     make_retrieved('valid','year', valid_matrix, K, 0)
 
@@ -190,7 +190,7 @@ def main():
 
     # Stack the differences and add a large value to the diagonal
     test_matrix = torch.stack(test_idx) 
-    torch.save(test_matrix, f'./dataset/{args.split}_test_formation_energy_calculation_delta_G.pt')
+    torch.save(test_matrix, f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt')
 
     make_retrieved('test','year', test_matrix, K, 0)
 

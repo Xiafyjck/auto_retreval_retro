@@ -69,11 +69,11 @@ def main():
     args.eval = 5
     args.retrieval = 'ours'
     args.split = 'year'
-    args.embedder = 'RetroPLEX'
+    args.embedder = 'Retrieval_Retro'
 
-    train_dataset = torch.load(f'./dataset/year/year_train_K_3.pt',map_location=device, weights_only=False)
-    valid_dataset = torch.load(f'./dataset/year/year_valid_K_3.pt',map_location=device, weights_only=False)
-    test_dataset = torch.load(f'./dataset/year/year_test_K_3.pt',map_location=device, weights_only=False)
+    train_dataset = torch.load(f'./dataset/{args.split}/year_train_K_{args.K}.pt',map_location=device, weights_only=False)
+    valid_dataset = torch.load(f'./dataset/{args.split}/year_valid_K_{args.K}.pt',map_location=device, weights_only=False)
+    test_dataset = torch.load(f'./dataset/{args.split}/year_test_K_{args.K}.pt',map_location=device, weights_only=False)
 
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle=True, collate_fn = custom_collate_fn)
     valid_loader = DataLoader(valid_dataset, batch_size = 1, collate_fn = custom_collate_fn)

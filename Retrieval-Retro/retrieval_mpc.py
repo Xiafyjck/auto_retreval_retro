@@ -5,14 +5,18 @@ from torch_geometric.loader import DataLoader
 import json
 import torch.nn.functional as F
 from collections import defaultdict
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--split', type=str, default='year')
+args = parser.parse_args()
 
 def make_sim_mpc(device):
 
     # Load saved embeddings from trained MPC (Fisrt, you need to train the MPC ,then save the embeddings)
-    load_path_train = f'./dataset/train_year_mpc_embeddings.pt'
-    load_path_valid = f'./dataset/valid_year_mpc_embeddings.pt'
-    load_path_test = f'./dataset/test_year_mpc_embeddings.pt'
+    load_path_train = f'./dataset/{args.split}/train_mpc_embeddings.pt'
+    load_path_valid = f'./dataset/{args.split}/valid_mpc_embeddings.pt'
+    load_path_test = f'./dataset/{args.split}/test_mpc_embeddings.pt'
 
     train_emb = torch.load(load_path_train, map_location = device, weights_only=False).squeeze(1)
     valid_emb = torch.load(load_path_valid, map_location = device, weights_only=False).squeeze(1)
@@ -29,9 +33,9 @@ def make_sim_mpc(device):
     diag_mask = torch.ones_like(cos_sim_train).to(device) - torch.eye(cos_sim_train.size(0), dtype=torch.float32).to(device)
     cos_sim_train= cos_sim_train * diag_mask
 
-    torch.save(cos_sim_train, f"./dataset/train_year_mpc_cos_sim_matrix.pt")
-    torch.save(cos_sim_valid, f"./dataset/valid_year_mpc_cos_sim_matrix.pt")
-    torch.save(cos_sim_test, f"./dataset/test_year_mpc_cos_sim_matrix.pt")
+    torch.save(cos_sim_train, f"./dataset/{args.split}/train_mpc_cos_sim_matrix.pt")
+    torch.save(cos_sim_valid, f"./dataset/{args.split}/valid_mpc_cos_sim_matrix.pt")
+    torch.save(cos_sim_test, f"./dataset/{args.split}/test_mpc_cos_sim_matrix.pt")
 
     print(f'cosine similarity matrix mpc saving completed')
 
@@ -78,9 +82,9 @@ def main():
 
     make_sim_mpc(device)
 
-    yr_mpc_train = torch.load(f"./dataset/train_year_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
-    yr_mpc_valid = torch.load(f"./dataset/valid_year_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
-    yr_mpc_test = torch.load(f"./dataset/test_year_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
+    yr_mpc_train = torch.load(f"./dataset/{args.split}/train_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
+    yr_mpc_valid = torch.load(f"./dataset/{args.split}/valid_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
+    yr_mpc_test = torch.load(f"./dataset/{args.split}/test_mpc_cos_sim_matrix.pt", map_location=device, weights_only=False)
 
     batch_size = 1000
     rank_mpc_train = compute_rank_in_batches(yr_mpc_train, batch_size)
