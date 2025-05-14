@@ -58,12 +58,12 @@ def main():
     print(device)
     seed_everything(seed=args.seed)
 
-    precursor_graph = torch.load("./dataset/year_precursor_graph.pt", map_location=device)
+    precursor_graph = torch.load("./dataset/year_precursor_graph.pt", map_location=device, weights_only=False)
     precursor_loader = DataLoader(precursor_graph, batch_size = 1, shuffle=False)
 
-    train_dataset = torch.load('./dataset/year/year_train_mpc.pt')
-    valid_dataset = torch.load('./dataset/year/year_valid_mpc.pt')
-    test_dataset = torch.load('./dataset/year/year_test_mpc.pt')
+    train_dataset = torch.load('./dataset/year/year_train_mpc.pt', weights_only=False)
+    valid_dataset = torch.load('./dataset/year/year_valid_mpc.pt', weights_only=False)
+    test_dataset = torch.load('./dataset/year/year_test_mpc.pt', weights_only=False)
 
     train_loader = DataLoader(train_dataset, batch_size = 1, shuffle=False)
     valid_loader = DataLoader(valid_dataset, batch_size = 1)
@@ -78,7 +78,7 @@ def main():
     output_dim = train_dataset[0].y_multiple.shape[1] #Dataset precursor set dim 
 
     model = GraphNetwork_prop(args.layers, n_atom_feat, n_bond_feat, n_hidden, device).to(device)
-    checkpoint = torch.load("./dataset/TL_pretrain(formation_exp)_embedder(graphnetwork)_lr(0.0005)_batch_size(256)_hidden(256)_seed(0)_.pt", map_location = device)
+    checkpoint = torch.load("./dataset/TL_pretrain(formation_exp)_embedder(graphnetwork)_lr(0.0005)_batch_size(256)_hidden(256)_seed(0)_.pt", map_location = device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'], strict=True)
     print(f'\nModel Weight Loaded')
 
@@ -129,10 +129,10 @@ def main():
         test_y_tensor = torch.stack(test_formation_list)
         torch.save(test_y_tensor, f'./dataset/{args.split}_test_formation_energy.pt')
     
-    precursor_formation_y = torch.load('./dataset/year_precursor_formation_energy.pt',map_location=device)
-    train_formation_y = torch.load('./dataset/year_train_formation_energy.pt', map_location=device)
-    valid_formation_y = torch.load('./dataset/year_valid_formation_energy.pt', map_location=device)
-    test_formation_y = torch.load('./dataset/year_test_formation_energy.pt', map_location=device)
+    precursor_formation_y = torch.load('./dataset/year_precursor_formation_energy.pt',map_location=device, weights_only=False)
+    train_formation_y = torch.load('./dataset/year_train_formation_energy.pt', map_location=device, weights_only=False)
+    valid_formation_y = torch.load('./dataset/year_valid_formation_energy.pt', map_location=device, weights_only=False)
+    test_formation_y = torch.load('./dataset/year_test_formation_energy.pt', map_location=device, weights_only=False)
     K = args.K
 
     # For Train
