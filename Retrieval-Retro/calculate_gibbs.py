@@ -41,13 +41,34 @@ def make_retrieved(mode, split, rank_matrix, k, seed):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     
     candidate_list = defaultdict(list)
-
-    for idx, sim_row in enumerate(rank_matrix):
-        top_k_val, top_k_idx = torch.topk(sim_row, k, largest=False)
-        candidate_list[idx] = top_k_idx.tolist()
+    
+    # 检查数据大小
+    memory_required = rank_matrix.shape[0] * rank_matrix.shape[1] * 4 / (1024**3)  # 估计内存需求（GB）
+    print(f"矩阵大小: {rank_matrix.shape}, 估计内存需求: {memory_required:.2f} GB")
+    
+    # 如果矩阵太大，使用分批处理
+    if memory_required > 1.0:  # 如果需要超过1GB内存
+        print(f"矩阵较大，使用分批处理...")
+        batch_size = max(1, min(1000, rank_matrix.shape[0] // 10))  # 自适应批大小
+        
+        for i in range(0, rank_matrix.shape[0], batch_size):
+            end_idx = min(i + batch_size, rank_matrix.shape[0])
+            print(f"处理批次 {i}-{end_idx} / {rank_matrix.shape[0]}")
+            
+            # 将当前批次移到设备上
+            batch_matrix = rank_matrix[i:end_idx].to(rank_matrix.device)
+            
+            for idx, sim_row in enumerate(tqdm(batch_matrix, desc=f"批次 {i}-{end_idx} 检索")):
+                top_k_val, top_k_idx = torch.topk(sim_row, k, largest=False)
+                candidate_list[i + idx] = top_k_idx.tolist()
+    else:
+        # 如果矩阵不大，一次性处理
+        for idx, sim_row in enumerate(tqdm(rank_matrix, desc=f"检索 {mode} 集")):
+            top_k_val, top_k_idx = torch.topk(sim_row, k, largest=False)
+            candidate_list[idx] = top_k_idx.tolist()
 
     with open(save_path, 'w') as f:
-            json.dump(candidate_list, f)
+        json.dump(candidate_list, f)
     
     print(f"已保存 {len(candidate_list)} 个样本的NRE检索结果到 {save_path}")
 
@@ -183,21 +204,47 @@ def main():
     # 检查是否已存在差异文件
     if os.path.exists(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt'):
         print(f"训练集差异文件已存在，跳过计算")
-        train_matrix = torch.load(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt', map_location=device)
+        # 分批加载以节省内image.png存
+        train_matrix = torch.load(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt', map_location='cpu')
+        # 只将用于处理的部分移到GPU
+        train_matrix = train_matrix.to(device)
     else:
-        train_differences = []
-        for i, data in enumerate(tqdm(train_formation_y, desc="训练集形成能差异")):
-            # 向量化计算所有差异
-            differences = data - precursor_sums
-            train_differences.append(differences)
+        # 估计数据大小并提示用户
+        estimated_memory_gb = (len(train_formation_y) * len(train_dataset) * 4) / (1024 ** 3)
+        print(f"估计需要内存: {estimated_memory_gb:.2f} GiB")
         
-        # 堆叠差异并添加对角线掩码
-        train_matrix = torch.stack(train_differences) + torch.eye(len(train_dataset), device=device) * 100000
+        # 确定批处理大小以适应GPU内存
+        max_batch_size = min(1000, len(train_formation_y))
+        print(f"使用批处理大小: {max_batch_size}")
+        
+        # 在CPU上创建结果张量，避免GPU内存不足
+        train_matrix = torch.zeros((len(train_formation_y), len(train_dataset)), dtype=torch.float32)
+        
+        # 分批计算差异
+        for i in range(0, len(train_formation_y), max_batch_size):
+            end_idx = min(i + max_batch_size, len(train_formation_y))
+            print(f"处理批次 {i}-{end_idx} / {len(train_formation_y)}")
+            
+            # 获取当前批次的形成能
+            current_batch = train_formation_y[i:end_idx].cpu()
+            
+            # 在CPU上计算差异
+            for j, data in enumerate(tqdm(current_batch, desc=f"批次 {i}-{end_idx} 形成能差异")):
+                # 计算当前样本与所有前驱体能量总和的差异
+                differences = data.item() - precursor_sums.cpu()
+                train_matrix[i+j] = differences
+        
+        # 添加对角线掩码以排除自身
+        diag_indices = torch.arange(len(train_dataset))
+        train_matrix[diag_indices, diag_indices] = 100000  # 大值以排除自身
+        
+        print(f"保存训练集差异矩阵...")
         torch.save(train_matrix, f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt')
         print(f"训练集差异计算完成，形状: {train_matrix.shape}")
     
     print(f"生成训练集检索结果...")
-    make_retrieved('train', args.split, train_matrix, K, args.seed)
+    # 分批处理检索结果生成
+    make_retrieved('train', args.split, train_matrix.to(device), K, args.seed)
 
     # For Valid
     print("\n计算验证集形成能差异...")
@@ -205,21 +252,33 @@ def main():
     # 检查是否已存在差异文件
     if os.path.exists(f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt'):
         print(f"验证集差异文件已存在，跳过计算")
-        valid_matrix = torch.load(f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt', map_location=device)
+        valid_matrix = torch.load(f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt', map_location='cpu')
+        valid_matrix = valid_matrix.to(device)
     else:
-        valid_differences = []
-        for i, data in enumerate(tqdm(valid_formation_y, desc="验证集形成能差异")):
-            # 向量化计算所有差异
-            differences = data - precursor_sums
-            valid_differences.append(differences)
+        # 在CPU上创建结果张量
+        valid_matrix = torch.zeros((len(valid_formation_y), len(train_dataset)), dtype=torch.float32)
         
-        # 堆叠差异
-        valid_matrix = torch.stack(valid_differences)
+        # 确定批处理大小
+        max_batch_size = min(1000, len(valid_formation_y))
+        
+        # 分批计算差异
+        for i in range(0, len(valid_formation_y), max_batch_size):
+            end_idx = min(i + max_batch_size, len(valid_formation_y))
+            print(f"处理批次 {i}-{end_idx} / {len(valid_formation_y)}")
+            
+            # 获取当前批次的形成能
+            current_batch = valid_formation_y[i:end_idx].cpu()
+            
+            # 在CPU上计算差异
+            for j, data in enumerate(tqdm(current_batch, desc=f"批次 {i}-{end_idx} 形成能差异")):
+                differences = data.item() - precursor_sums.cpu()
+                valid_matrix[i+j] = differences
+        
         torch.save(valid_matrix, f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt')
         print(f"验证集差异计算完成，形状: {valid_matrix.shape}")
     
     print(f"生成验证集检索结果...")
-    make_retrieved('valid', args.split, valid_matrix, K, args.seed)
+    make_retrieved('valid', args.split, valid_matrix.to(device), K, args.seed)
 
     # For Test
     print("\n计算测试集形成能差异...")
@@ -227,21 +286,33 @@ def main():
     # 检查是否已存在差异文件
     if os.path.exists(f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt'):
         print(f"测试集差异文件已存在，跳过计算")
-        test_matrix = torch.load(f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt', map_location=device)
+        test_matrix = torch.load(f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt', map_location='cpu')
+        test_matrix = test_matrix.to(device)
     else:
-        test_differences = []
-        for i, data in enumerate(tqdm(test_formation_y, desc="测试集形成能差异")):
-            # 向量化计算所有差异
-            differences = data - precursor_sums
-            test_differences.append(differences)
+        # 在CPU上创建结果张量
+        test_matrix = torch.zeros((len(test_formation_y), len(train_dataset)), dtype=torch.float32)
         
-        # 堆叠差异
-        test_matrix = torch.stack(test_differences)
+        # 确定批处理大小
+        max_batch_size = min(1000, len(test_formation_y))
+        
+        # 分批计算差异
+        for i in range(0, len(test_formation_y), max_batch_size):
+            end_idx = min(i + max_batch_size, len(test_formation_y))
+            print(f"处理批次 {i}-{end_idx} / {len(test_formation_y)}")
+            
+            # 获取当前批次的形成能
+            current_batch = test_formation_y[i:end_idx].cpu()
+            
+            # 在CPU上计算差异
+            for j, data in enumerate(tqdm(current_batch, desc=f"批次 {i}-{end_idx} 形成能差异")):
+                differences = data.item() - precursor_sums.cpu()
+                test_matrix[i+j] = differences
+        
         torch.save(test_matrix, f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt')
         print(f"测试集差异计算完成，形状: {test_matrix.shape}")
     
     print(f"生成测试集检索结果...")
-    make_retrieved('test', args.split, test_matrix, K, args.seed)
+    make_retrieved('test', args.split, test_matrix.to(device), K, args.seed)
     
     print(f"\n所有形成能差异计算和检索完成! 总用时: {time.time() - diff_start_time:.2f}秒")
     print(f"全部处理完成! 总用时: {time.time() - start_time:.2f}秒")
