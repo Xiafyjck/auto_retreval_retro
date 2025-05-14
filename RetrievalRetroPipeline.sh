@@ -368,6 +368,7 @@ if [ -f "$NRE_TRAIN_RESULT" ] && [ -f "$NRE_VALID_RESULT" ] && [ -f "$NRE_TEST_R
     echo "✓ NRE检索结果已存在，跳过NRE检索步骤"
 else
     echo "NRE检索结果不存在，开始进行NRE检索..."
+    echo "检索路径: $NRE_TRAIN_RESULT, $NRE_VALID_RESULT, $NRE_TEST_RESULT"
     
     # 检查形成能文件是否存在
     FORMATION_ENERGY_TRAIN="./dataset/${DATASET_NAME}/train_formation_energy.pt"
@@ -380,11 +381,27 @@ else
         echo "形成能文件已存在，但检索结果不存在，可能是在计算差异时出错。尝试重新计算..."
     fi
     
+    # 运行检索脚本，使用当前K值和设备ID
+    echo "运行: python calculate_gibbs.py --split \"${DATASET_NAME}\" --K \"${K_VALUE}\" --device \"${GPU_ID}\""
     python calculate_gibbs.py --split "${DATASET_NAME}" --K "${K_VALUE}" --device "${GPU_ID}"
     if [ $? -ne 0 ]; then
         echo "计算形成能和NRE检索失败"
         cd "$ORIGINAL_DIR"
         exit 1
+    fi
+    
+    # 再次检查检索结果是否成功生成
+    if [ ! -f "$NRE_TRAIN_RESULT" ] || [ ! -f "$NRE_VALID_RESULT" ] || [ ! -f "$NRE_TEST_RESULT" ]; then
+        echo "警告: NRE检索执行完成，但检索结果文件未找到。"
+        echo "预期文件路径:"
+        echo "- $NRE_TRAIN_RESULT"
+        echo "- $NRE_VALID_RESULT" 
+        echo "- $NRE_TEST_RESULT"
+        echo "请检查 calculate_gibbs.py 中的保存路径是否正确。"
+        cd "$ORIGINAL_DIR"
+        exit 1
+    else
+        echo "✓ NRE检索结果生成成功"
     fi
 fi
 

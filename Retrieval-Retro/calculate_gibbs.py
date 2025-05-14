@@ -14,6 +14,7 @@ from models import GraphNetwork, GraphNetwork_prop
 import utils_main
 from collections import defaultdict
 from tqdm import tqdm
+import time
 
 torch.set_num_threads(4)
 os.environ['OMP_NUM_THREADS'] = "4"
@@ -31,11 +32,14 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = False
 
 def make_retrieved(mode, split, rank_matrix, k, seed):
-     
-
-    save_path = f'./dataset/{split}_{mode}_nre_retrieved_{k}'
+    # 修正保存路径，使其与RetrievalRetroPipeline.sh预期的路径一致
+    save_path = f'./dataset/{split}/{mode}_nre_retrieved_{k}'
     
-
+    print(f"保存NRE检索结果到: {save_path}")
+    
+    # 确保输出目录存在
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    
     candidate_list = defaultdict(list)
 
     for idx, sim_row in enumerate(rank_matrix):
@@ -44,6 +48,8 @@ def make_retrieved(mode, split, rank_matrix, k, seed):
 
     with open(save_path, 'w') as f:
             json.dump(candidate_list, f)
+    
+    print(f"已保存 {len(candidate_list)} 个样本的NRE检索结果到 {save_path}")
 
 def main():
     args = utils_main.parse_args()
@@ -51,13 +57,18 @@ def main():
     configuration = utils_main.exp_get_name_RetroPLEX(train_config)
     print(f'configuration: {configuration}')
 
-
-    args.device = 7
+    # 使用命令行参数中的设备ID，不再硬编码
     device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(device)
-    print(device)
+    print(f"使用设备: {device}")
+    print(f"数据集拆分: {args.split}")
+    print(f"检索数量K: {args.K}")
+    
     seed_everything(seed=args.seed)
 
+    print("加载数据集...")
+    start_time = time.time()
+    
     precursor_graph = torch.load(f"./dataset/{args.split}/precursor_graph.pt", map_location=device, weights_only=False)
     precursor_loader = DataLoader(precursor_graph, batch_size = 1, shuffle=False)
 
@@ -69,133 +80,171 @@ def main():
     valid_loader = DataLoader(valid_dataset, batch_size = 1)
     test_loader = DataLoader(test_dataset, batch_size = 1)
 
-    print("Dataset Loaded!")
-
+    print(f"数据集加载完成! 用时: {time.time() - start_time:.2f}秒")
+    print(f"数据集大小: 前驱体={len(precursor_graph)}, 训练集={len(train_dataset)}, 验证集={len(valid_dataset)}, 测试集={len(test_dataset)}")
 
     n_hidden = args.hidden
     n_atom_feat = train_dataset[0].x.shape[1]
     n_bond_feat = train_dataset[0].edge_attr.shape[1]
     output_dim = train_dataset[0].y_multiple.shape[1] #Dataset precursor set dim 
 
+    print("加载预训练模型...")
     model = GraphNetwork_prop(args.layers, n_atom_feat, n_bond_feat, n_hidden, device).to(device)
     checkpoint = torch.load("./dataset/TL_pretrain(formation_exp)_embedder(graphnetwork)_lr(0.0005)_batch_size(256)_hidden(256)_seed(0)_.pt", map_location = device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'], strict=True)
-    print(f'\nModel Weight Loaded')
-
+    print(f'模型加载完成!')
 
     ### Calculating formation energy for precursor graph ###
-
-    precursor_formation_list = []
-    train_formation_list = []
-    valid_formation_list = []
-    test_formation_list = []
-
-    model.eval()
-    with torch.no_grad():
-
-        for bc, batch in enumerate(precursor_loader):
-            batch.to(device)
-
-            y,_ = model(batch)
-
-            precursor_formation_list.append(y)
-        precursor_y_tensor = torch.stack(precursor_formation_list)
-        torch.save(precursor_y_tensor, f'./dataset/{args.split}/precursor_formation_energy.pt')
-
-        for bc, batch in enumerate(train_loader):
-            batch.to(device)
-
-            y,_ = model(batch)
-
-            train_formation_list.append(y)
-        train_y_tensor = torch.stack(train_formation_list)
-        torch.save(train_y_tensor, f'./dataset/{args.split}/train_formation_energy.pt')
-
-        for bc, batch in enumerate(valid_loader):
-            batch.to(device)
-
-            y,_ = model(batch)
-
-            valid_formation_list.append(y)
-        valid_y_tensor = torch.stack(valid_formation_list)
-        torch.save(valid_y_tensor, f'./dataset/{args.split}/valid_formation_energy.pt')
-
-        for bc, batch in enumerate(test_loader):
-            batch.to(device)
-
-            y,_ = model(batch)
-
-            test_formation_list.append(y)
-        test_y_tensor = torch.stack(test_formation_list)
-        torch.save(test_y_tensor, f'./dataset/{args.split}/test_formation_energy.pt')
+    print("\n计算形成能...")
+    formation_start_time = time.time()
     
+    # 检查是否已存在形成能文件，如果存在则跳过计算
+    all_formation_files_exist = all([
+        os.path.exists(f'./dataset/{args.split}/precursor_formation_energy.pt'),
+        os.path.exists(f'./dataset/{args.split}/train_formation_energy.pt'),
+        os.path.exists(f'./dataset/{args.split}/valid_formation_energy.pt'),
+        os.path.exists(f'./dataset/{args.split}/test_formation_energy.pt')
+    ])
+    
+    if all_formation_files_exist:
+        print("所有形成能文件已存在，跳过形成能计算步骤")
+    else:
+        precursor_formation_list = []
+        train_formation_list = []
+        valid_formation_list = []
+        test_formation_list = []
+
+        model.eval()
+        with torch.no_grad():
+            print("计算前驱体形成能...")
+            for bc, batch in enumerate(tqdm(precursor_loader, desc="前驱体形成能")):
+                batch.to(device)
+                y,_ = model(batch)
+                precursor_formation_list.append(y)
+            precursor_y_tensor = torch.stack(precursor_formation_list)
+            torch.save(precursor_y_tensor, f'./dataset/{args.split}/precursor_formation_energy.pt')
+            print(f"前驱体形成能已保存，形状: {precursor_y_tensor.shape}")
+
+            print("计算训练集形成能...")
+            for bc, batch in enumerate(tqdm(train_loader, desc="训练集形成能")):
+                batch.to(device)
+                y,_ = model(batch)
+                train_formation_list.append(y)
+            train_y_tensor = torch.stack(train_formation_list)
+            torch.save(train_y_tensor, f'./dataset/{args.split}/train_formation_energy.pt')
+            print(f"训练集形成能已保存，形状: {train_y_tensor.shape}")
+
+            print("计算验证集形成能...")
+            for bc, batch in enumerate(tqdm(valid_loader, desc="验证集形成能")):
+                batch.to(device)
+                y,_ = model(batch)
+                valid_formation_list.append(y)
+            valid_y_tensor = torch.stack(valid_formation_list)
+            torch.save(valid_y_tensor, f'./dataset/{args.split}/valid_formation_energy.pt')
+            print(f"验证集形成能已保存，形状: {valid_y_tensor.shape}")
+
+            print("计算测试集形成能...")
+            for bc, batch in enumerate(tqdm(test_loader, desc="测试集形成能")):
+                batch.to(device)
+                y,_ = model(batch)
+                test_formation_list.append(y)
+            test_y_tensor = torch.stack(test_formation_list)
+            torch.save(test_y_tensor, f'./dataset/{args.split}/test_formation_energy.pt')
+            print(f"测试集形成能已保存，形状: {test_y_tensor.shape}")
+        
+        print(f"形成能计算完成! 总用时: {time.time() - formation_start_time:.2f}秒")
+    
+    print("\n加载形成能数据...")
     precursor_formation_y = torch.load(f'./dataset/{args.split}/precursor_formation_energy.pt',map_location=device, weights_only=False)
     train_formation_y = torch.load(f'./dataset/{args.split}/train_formation_energy.pt', map_location=device, weights_only=False)
     valid_formation_y = torch.load(f'./dataset/{args.split}/valid_formation_energy.pt', map_location=device, weights_only=False)
     test_formation_y = torch.load(f'./dataset/{args.split}/test_formation_energy.pt', map_location=device, weights_only=False)
     K = args.K
+    
+    print(f"形成能数据加载完成! 形状: 前驱体={precursor_formation_y.shape}, 训练集={train_formation_y.shape}, 验证集={valid_formation_y.shape}, 测试集={test_formation_y.shape}")
+
+    # 预先计算每个训练集样本的前驱体能量总和，避免重复计算
+    print("\n预计算训练集样本的前驱体能量总和...")
+    precursor_sums = []
+    for db in tqdm(train_dataset, desc="计算前驱体能量总和"):
+        precursor_indices = db.y_lb_one.nonzero(as_tuple=False).squeeze()
+        if precursor_indices.dim() == 0:  # 处理只有一个前驱体的情况
+            precursor_indices = precursor_indices.unsqueeze(0)
+        precursor_energies = precursor_formation_y[precursor_indices]
+        precursor_sum = precursor_energies.sum()
+        precursor_sums.append(precursor_sum)
+    precursor_sums = torch.tensor(precursor_sums, device=device)
+    print("前驱体能量总和计算完成!")
 
     # For Train
-    train_idx = []
-
-    # Compute formation energy differences
-    for data in tqdm(train_formation_y):
-        precursor_differences = torch.zeros(len(train_dataset))
-        for j, db in enumerate(train_dataset):
-            precursor_indices = db.y_lb_one.nonzero(as_tuple=False).squeeze()
-            precursor_energies = precursor_formation_y[precursor_indices]
-            differences = data - (precursor_energies).sum() 
-            precursor_differences[j] = differences.item()
-
-        train_idx.append(precursor_differences)
-
-    # Stack the differences and add a large value to the diagonal
-    train_matrix = torch.stack(train_idx) + torch.eye(len(train_dataset)) * 100000
-    torch.save(train_matrix, f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt')
-    make_retrieved('train','year', train_matrix, K, 0)
+    print("\n计算训练集形成能差异...")
+    diff_start_time = time.time()
+    
+    # 检查是否已存在差异文件
+    if os.path.exists(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt'):
+        print(f"训练集差异文件已存在，跳过计算")
+        train_matrix = torch.load(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt', map_location=device)
+    else:
+        train_differences = []
+        for i, data in enumerate(tqdm(train_formation_y, desc="训练集形成能差异")):
+            # 向量化计算所有差异
+            differences = data - precursor_sums
+            train_differences.append(differences)
+        
+        # 堆叠差异并添加对角线掩码
+        train_matrix = torch.stack(train_differences) + torch.eye(len(train_dataset), device=device) * 100000
+        torch.save(train_matrix, f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt')
+        print(f"训练集差异计算完成，形状: {train_matrix.shape}")
+    
+    print(f"生成训练集检索结果...")
+    make_retrieved('train', args.split, train_matrix, K, args.seed)
 
     # For Valid
-    valid_idx = []
-
-    # Compute formation energy differences
-    for data in tqdm(valid_formation_y):
-        precursor_differences = torch.zeros(len(train_dataset))
-        for j, db in enumerate(train_dataset):
-            precursor_indices = db.y_lb_one.nonzero(as_tuple=False).squeeze()
-            precursor_energies = precursor_formation_y[precursor_indices]
-            differences = data - (precursor_energies).sum()
-            precursor_differences[j] = differences.item()
-
-        valid_idx.append(precursor_differences)
-
-    # Stack the differences and add a large value to the diagonal
-    valid_matrix = torch.stack(valid_idx) 
-    torch.save(valid_matrix, f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt')
-
-    make_retrieved('valid','year', valid_matrix, K, 0)
+    print("\n计算验证集形成能差异...")
+    
+    # 检查是否已存在差异文件
+    if os.path.exists(f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt'):
+        print(f"验证集差异文件已存在，跳过计算")
+        valid_matrix = torch.load(f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt', map_location=device)
+    else:
+        valid_differences = []
+        for i, data in enumerate(tqdm(valid_formation_y, desc="验证集形成能差异")):
+            # 向量化计算所有差异
+            differences = data - precursor_sums
+            valid_differences.append(differences)
+        
+        # 堆叠差异
+        valid_matrix = torch.stack(valid_differences)
+        torch.save(valid_matrix, f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt')
+        print(f"验证集差异计算完成，形状: {valid_matrix.shape}")
+    
+    print(f"生成验证集检索结果...")
+    make_retrieved('valid', args.split, valid_matrix, K, args.seed)
 
     # For Test
-    test_idx = []
-
-    # Compute formation energy differences
-    for data in tqdm(test_formation_y):
-        precursor_differences = torch.zeros(len(train_dataset))
-        for j, db in enumerate(train_dataset):
-            precursor_indices = db.y_lb_one.nonzero(as_tuple=False).squeeze()
-            precursor_energies = precursor_formation_y[precursor_indices]
-            differences = data - (precursor_energies).sum()
-            precursor_differences[j] = differences.item()
-
-        test_idx.append(precursor_differences)
-
-    # Stack the differences and add a large value to the diagonal
-    test_matrix = torch.stack(test_idx) 
-    torch.save(test_matrix, f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt')
-
-    make_retrieved('test','year', test_matrix, K, 0)
-
-
+    print("\n计算测试集形成能差异...")
+    
+    # 检查是否已存在差异文件
+    if os.path.exists(f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt'):
+        print(f"测试集差异文件已存在，跳过计算")
+        test_matrix = torch.load(f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt', map_location=device)
+    else:
+        test_differences = []
+        for i, data in enumerate(tqdm(test_formation_y, desc="测试集形成能差异")):
+            # 向量化计算所有差异
+            differences = data - precursor_sums
+            test_differences.append(differences)
+        
+        # 堆叠差异
+        test_matrix = torch.stack(test_differences)
+        torch.save(test_matrix, f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt')
+        print(f"测试集差异计算完成，形状: {test_matrix.shape}")
+    
+    print(f"生成测试集检索结果...")
+    make_retrieved('test', args.split, test_matrix, K, args.seed)
+    
+    print(f"\n所有形成能差异计算和检索完成! 总用时: {time.time() - diff_start_time:.2f}秒")
+    print(f"全部处理完成! 总用时: {time.time() - start_time:.2f}秒")
 
 if __name__ == "__main__":
-
     main()
