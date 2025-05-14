@@ -95,12 +95,11 @@ def main():
     print("数据集加载完成!")
     print(f"数据集大小: 训练集={len(train_dataset)}, 验证集={len(valid_dataset)}, 测试集={len(test_dataset)}")
 
-    # 打印数据维度以帮助调试
+    # 只在开始时打印一次数据维度检查，避免冗余输出
     print("\n==== 数据维度检查 ====")
     try:
         # 检查第一个训练数据点
         train_sample = train_dataset[0]
-        print(f"训练样本类型: {type(train_sample)}")
         print(f"训练样本主图特征维度: x={train_sample[0].x.shape}, edge_attr={train_sample[0].edge_attr.shape}")
         print(f"训练样本MPC检索图数量: {len(train_sample[1])}")
         print(f"训练样本NRE检索图数量: {len(train_sample[2])}")
@@ -110,13 +109,6 @@ def main():
             print(f"MPC检索图特征维度: x={train_sample[1][0].x.shape}, edge_attr={train_sample[1][0].edge_attr.shape}")
         if len(train_sample[2]) > 0:
             print(f"NRE检索图特征维度: x={train_sample[2][0].x.shape}, edge_attr={train_sample[2][0].edge_attr.shape}")
-        
-        # 加载模型输入前打印批次维度
-        first_batch = next(iter(train_loader))
-        print(f"批次0主图节点特征: {first_batch[0].x.shape}")
-        print(f"批次0主图边特征: {first_batch[0].edge_attr.shape}")
-        print(f"批次0 MPC图数量: {len(first_batch[1])}")
-        print(f"批次0 NRE图数量: {len(first_batch[2])}")
     except Exception as e:
         print(f"数据检查时出错: {e}")
 
@@ -170,12 +162,16 @@ def main():
     test_macro = 0
     test_micro = 0
     best_acc_list = []
+    
+    # 只在第一个epoch的第一个batch进行模型调试
+    debug_first_batch = True
+    
     for epoch in range(args.epochs):
         train_loss = 0
         model.train()
         for bc, batch in enumerate(train_loader):
-            # 添加详细的维度检查
-            if bc == 0:
+            # 只在第一个epoch的第一个batch进行模型调试
+            if debug_first_batch and epoch == 0 and bc == 0:
                 try:
                     print(f"\n[批次调试] 批次{bc}:")
                     print(f"主图节点数量: {batch[0].x.size(0)}")
@@ -196,16 +192,16 @@ def main():
                     print(f"模型hidden_dim: {hidden_dim}")
                     print(f"模型fusion_linear层输入预期维度: {hidden_dim*2}")
                     print(f"模型fusion_linear层输出预期维度: {hidden_dim}")
+                    debug_first_batch = False
                 except Exception as e:
                     print(f"批次检查时出错: {e}")
+                    debug_first_batch = False
 
             y = batch[0].y_lb_one.reshape(len(batch[0].ptr)-1, -1)
             
-            # 添加try-except包装模型前向传播，以提供更详细的错误信息
+            # 减少冗余输出，只在出错时显示详细信息
             try:
-                print(f"\n开始调用模型前向传播...")
                 template_output = model(batch)
-                print(f"模型前向传播成功完成!")
             except Exception as e:
                 print(f"\n模型前向传播中出现错误: {e}")
                 # 尝试进一步分析错误
@@ -235,15 +231,16 @@ def main():
                 continue
                 
             loss_template = bce_loss(template_output, y)
-
             loss = loss_template
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             train_loss += loss
 
-            sys.stdout.write(f'\r[ epoch {epoch+1}/{args.epochs} | batch {bc}/{num_batch} ] Total Loss : {(train_loss/(bc+1)):.4f}')
-            sys.stdout.flush()
+            # 减少输出频率，只每10个批次更新一次进度
+            if bc % 10 == 0 or bc == num_batch - 1:
+                sys.stdout.write(f'\r[ epoch {epoch+1}/{args.epochs} | batch {bc}/{num_batch} ] Total Loss : {(train_loss/(bc+1)):.4f}')
+                sys.stdout.flush()
 
         if (epoch + 1) % args.eval == 0 :
             model.eval()

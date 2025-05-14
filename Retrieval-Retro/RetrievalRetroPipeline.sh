@@ -18,7 +18,7 @@ else
     # 训练MPC模型
     # 重要: 确保这里的hidden_dim值(默认256)与main_Retrieval_Retro.py中使用的值一致
     # 否则可能导致维度不匹配错误
-    python train_mpc.py --device "${GPU_ID}" --lr 0.0005 --batch_size 32 --loss adaptive --split "${DATASET_NAME}" --epochs 30 --hidden 256
+    python train_mpc.py --device "${GPU_ID}" --lr 0.0005 --batch_size 32 --loss adaptive --split "${DATASET_NAME}" --epochs 1000 --hidden 256
     if [ $? -ne 0 ]; then
         echo "训练MPC模型失败"
         exit 1
@@ -49,7 +49,7 @@ else
     echo "模型结果文件不存在，开始训练主模型..."
     # 重要: 确保这里的hidden_dim值(默认64)与之前步骤中使用的值一致
     # 可以根据需要调整，但建议在train_mpc.py和main_Retrieval_Retro.py中使用相同的hidden_dim值
-    python main_Retrieval_Retro.py --device ${GPU_ID} --K ${K_VALUE} --batch_size 32 --hidden_dim 256 --epochs 20 --lr 0.0005 --es 30 --split ${DATASET_NAME}
+    python main_Retrieval_Retro.py --device ${GPU_ID} --K ${K_VALUE} --batch_size 32 --hidden_dim 256 --epochs 1000 --lr 0.0005 --es 30 --split ${DATASET_NAME}
 fi
 
 # 返回原目录

@@ -306,7 +306,7 @@ if [ -f "$TRAIN_EMBEDDING" ] && [ -f "$VALID_EMBEDDING" ] && [ -f "$TEST_EMBEDDI
 else
     echo "嵌入向量文件不存在，开始训练MPC模型..."
     # 训练MPC模型
-    python train_mpc.py --device "${GPU_ID}" --lr 0.0005 --batch_size 32 --loss adaptive --split "${DATASET_NAME}" --epochs 30
+    python train_mpc.py --device "${GPU_ID}" --lr 0.0005 --batch_size 32 --loss adaptive --split "${DATASET_NAME}" --epochs 1000
     if [ $? -ne 0 ]; then
         echo "训练MPC模型失败"
         exit 1
