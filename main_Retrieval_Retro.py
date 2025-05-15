@@ -24,125 +24,94 @@ os.environ['OMP_NUM_THREADS'] = "4"
 from torch_geometric.data import Batch
 
 def custom_collate_fn(batch):
-    """自定义批次处理函数，用于处理包含主图和两组额外图的数据"""
-    try:
-        # 确保batch不为空
-        if not batch:
-            print("警告: 空批次")
+    """自定义批次处理函数，标准化数据格式"""
+    # 批次结构检查和转换
+    for i, item in enumerate(batch):
+        if isinstance(item, list) and len(item) == 3:
+            batch[i] = tuple(item)
+            print(f"调试: 第 {i} 项被转换为元组")
+        
+        if not isinstance(batch[i], tuple) or len(batch[i]) != 3:
+            print(f"调试: 批次项 {i} 格式不正确: {type(batch[i])}")
             return None
-        
-        # 批次结构检查
-        for i, item in enumerate(batch):
-            if not isinstance(item, tuple) or len(item) != 3:
-                # 如果是列表则转换为元组
-                if isinstance(item, list) and len(item) == 3:
-                    batch[i] = tuple(item)
-                else:
-                    print(f"警告: 批次项 {i} 不是一个包含3个元素的元组或列表，而是 {type(item)}，长度: {len(item) if hasattr(item, '__len__') else 'N/A'}")
-                    return None
-        
-        # Batch main graphs
-        main_graphs = []
-        for i, item in enumerate(batch):
-            if not hasattr(item[0], 'x') or not hasattr(item[0], 'edge_index'):
-                print(f"警告: 第 {i} 项的主图不是一个有效的PyG Data对象")
-                continue
+    
+    # 批处理主图
+    main_graphs = []
+    for i, item in enumerate(batch):
+        if hasattr(item[0], 'x') and hasattr(item[0], 'edge_index'):
             main_graphs.append(item[0])
-        
-        if not main_graphs:
-            print("警告: 没有有效的主图")
+        else:
+            print(f"调试: 第 {i} 项的主图缺少必要属性")
             return None
-            
-        batched_main_graphs = Batch.from_data_list(main_graphs)
+    
+    batched_main_graphs = Batch.from_data_list(main_graphs)
+    
+    # 批处理第一组额外图 (MPC)
+    first_additional_graphs = []
+    for i, item in enumerate(batch):
+        if not isinstance(item[1], list):
+            print(f"调试: 第 {i} 项的第一组额外图不是列表: {type(item[1])}")
+            continue
         
-        # Handle the first set of additional graphs
-        first_additional_graphs = []
-        for i, item in enumerate(batch):
-            if not isinstance(item[1], list):
-                print(f"警告: 第 {i} 项的第一组额外图不是列表，而是 {type(item[1])}")
-                continue
-            
-            for j, graph in enumerate(item[1]):
-                if not hasattr(graph, 'x') or not hasattr(graph, 'edge_index'):
-                    print(f"警告: 第 {i} 项的第一组额外图中的第 {j} 个图不是一个有效的PyG Data对象")
-                    continue
-                # 保留precursor字段
-                if hasattr(graph, 'precursor'):
-                    first_additional_graphs.append(graph)
-                else:
-                    # 如果缺少precursor，尝试从y_lb_one创建
+        for j, graph in enumerate(item[1]):
+            if hasattr(graph, 'x') and hasattr(graph, 'edge_index'):
+                # 确保有precursor字段
+                if not hasattr(graph, 'precursor'):
                     if hasattr(graph, 'y_lb_one'):
                         graph.precursor = graph.y_lb_one
-                        first_additional_graphs.append(graph)
                     else:
-                        # 缺少关键字段
-                        print(f"警告: 第 {i} 项的第一组额外图中的第 {j} 个图缺少precursor和y_lb_one字段")
+                        print(f"调试: 第 {i} 项的第一组额外图中缺少precursor字段")
                         continue
+                first_additional_graphs.append(graph)
+    
+    if not first_additional_graphs:
+        print("调试: 第一组额外图为空，创建虚拟图")
+        from torch_geometric.data import Data
+        dummy_graph = Data(
+            x=torch.zeros((1, main_graphs[0].x.size(1))),
+            edge_index=torch.zeros((2, 1), dtype=torch.long),
+            edge_attr=torch.zeros((1, main_graphs[0].edge_attr.size(1))),
+            fc_weight=torch.ones(1),
+            precursor=torch.zeros(main_graphs[0].y_lb_one.shape) if hasattr(main_graphs[0], 'y_lb_one') else torch.zeros(798)
+        )
+        first_additional_graphs = [dummy_graph]
+    
+    batched_first_additional_graphs = Batch.from_data_list(first_additional_graphs)
+    
+    # 批处理第二组额外图 (NRE)
+    second_additional_graphs = []
+    for i, item in enumerate(batch):
+        if not isinstance(item[2], list):
+            print(f"调试: 第 {i} 项的第二组额外图不是列表: {type(item[2])}")
+            continue
         
-        # 确保有图形可以批处理
-        if not first_additional_graphs:
-            print("警告: 第一组额外图为空，创建虚拟图对象")
-            from torch_geometric.data import Data
-            dummy_graph = Data(
-                x=torch.zeros((1, main_graphs[0].x.size(1))),
-                edge_index=torch.zeros((2, 1), dtype=torch.long),
-                edge_attr=torch.zeros((1, main_graphs[0].edge_attr.size(1))),
-                fc_weight=torch.ones(1),
-                precursor=torch.zeros(main_graphs[0].y_lb_one.shape) if hasattr(main_graphs[0], 'y_lb_one') else torch.zeros(798)
-            )
-            first_additional_graphs = [dummy_graph]
-            
-        batched_first_additional_graphs = Batch.from_data_list(first_additional_graphs)
-
-        # Handle the second set of additional graphs
-        second_additional_graphs = []
-        for i, item in enumerate(batch):
-            if not isinstance(item[2], list):
-                print(f"警告: 第 {i} 项的第二组额外图不是列表，而是 {type(item[2])}")
-                continue
-                
-            for j, graph in enumerate(item[2]):
-                if not hasattr(graph, 'x') or not hasattr(graph, 'edge_index'):
-                    print(f"警告: 第 {i} 项的第二组额外图中的第 {j} 个图不是一个有效的PyG Data对象")
-                    continue
-                # 保留precursor字段
-                if hasattr(graph, 'precursor'):
-                    second_additional_graphs.append(graph)
-                else:
-                    # 如果缺少precursor，尝试从y_lb_one创建
+        for j, graph in enumerate(item[2]):
+            if hasattr(graph, 'x') and hasattr(graph, 'edge_index'):
+                # 确保有precursor字段
+                if not hasattr(graph, 'precursor'):
                     if hasattr(graph, 'y_lb_one'):
                         graph.precursor = graph.y_lb_one
-                        second_additional_graphs.append(graph)
                     else:
-                        # 缺少关键字段
-                        print(f"警告: 第 {i} 项的第二组额外图中的第 {j} 个图缺少precursor和y_lb_one字段")
+                        print(f"调试: 第 {i} 项的第二组额外图中缺少precursor字段")
                         continue
-        
-        # 确保有图形可以批处理
-        if not second_additional_graphs:
-            print("警告: 第二组额外图为空，创建虚拟图对象")
-            from torch_geometric.data import Data
-            dummy_graph = Data(
-                x=torch.zeros((1, main_graphs[0].x.size(1))),
-                edge_index=torch.zeros((2, 1), dtype=torch.long),
-                edge_attr=torch.zeros((1, main_graphs[0].edge_attr.size(1))),
-                fc_weight=torch.ones(1),
-                precursor=torch.zeros(main_graphs[0].y_lb_one.shape) if hasattr(main_graphs[0], 'y_lb_one') else torch.zeros(798)
-            )
-            second_additional_graphs = [dummy_graph]
-            
-        batched_second_additional_graphs = Batch.from_data_list(second_additional_graphs)
-        
-        # 在返回前确保数据类型兼容
-        result = (batched_main_graphs, batched_first_additional_graphs, batched_second_additional_graphs)
-        
-        return result
-        
-    except Exception as e:
-        print(f"批次处理错误: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
+                second_additional_graphs.append(graph)
+    
+    if not second_additional_graphs:
+        print("调试: 第二组额外图为空，创建虚拟图")
+        from torch_geometric.data import Data
+        dummy_graph = Data(
+            x=torch.zeros((1, main_graphs[0].x.size(1))),
+            edge_index=torch.zeros((2, 1), dtype=torch.long),
+            edge_attr=torch.zeros((1, main_graphs[0].edge_attr.size(1))),
+            fc_weight=torch.ones(1),
+            precursor=torch.zeros(main_graphs[0].y_lb_one.shape) if hasattr(main_graphs[0], 'y_lb_one') else torch.zeros(798)
+        )
+        second_additional_graphs = [dummy_graph]
+    
+    batched_second_additional_graphs = Batch.from_data_list(second_additional_graphs)
+    
+    # 返回标准化的元组
+    return (batched_main_graphs, batched_first_additional_graphs, batched_second_additional_graphs)
 
 def seed_everything(seed):
     # To fix the random seed
@@ -201,32 +170,36 @@ def main():
     print(f"验证集文件: {valid_file}")
     print(f"测试集文件: {test_file}")
     
-    try:
-        train_dataset = torch.load(train_file, map_location=device, weights_only=False)
-        valid_dataset = torch.load(valid_file, map_location=device, weights_only=False)
-        test_dataset = torch.load(test_file, map_location=device, weights_only=False)
-        
-        # 检查数据类型
-        if isinstance(train_dataset, list):
-            print(f"数据格式是列表，元素数量: {len(train_dataset)}")
-            if len(train_dataset) > 0:
-                print(f"第一个元素类型: {type(train_dataset[0])}")
-                # 确保元素是元组
-                if isinstance(train_dataset[0], list):
-                    print("数据元素是列表，转换为元组")
-                    train_dataset = [tuple(x) if isinstance(x, list) else x for x in train_dataset]
-                    valid_dataset = [tuple(x) if isinstance(x, list) else x for x in valid_dataset]
-                    test_dataset = [tuple(x) if isinstance(x, list) else x for x in test_dataset]
-        
-    except Exception as e:
-        print(f"错误: 无法加载数据集文件: {e}")
-        return
+    # 加载数据集
+    train_dataset = torch.load(train_file, map_location=device, weights_only=False)
+    valid_dataset = torch.load(valid_file, map_location=device, weights_only=False)
+    test_dataset = torch.load(test_file, map_location=device, weights_only=False)
+    
+    # 标准化数据格式
+    print(f"数据格式标准化...")
+    if isinstance(train_dataset, list):
+        print(f"数据格式是列表，元素数量: {len(train_dataset)}")
+        # 确保每个元素都是元组类型
+        if len(train_dataset) > 0:
+            print(f"第一个元素类型: {type(train_dataset[0])}")
+            if isinstance(train_dataset[0], list):
+                print("将列表元素转换为元组")
+                train_dataset = [tuple(x) if isinstance(x, list) else x for x in train_dataset]
+                valid_dataset = [tuple(x) if isinstance(x, list) else x for x in valid_dataset]
+                test_dataset = [tuple(x) if isinstance(x, list) else x for x in test_dataset]
+    
+    # 打印数据集大小
+    print(f"训练集大小: {len(train_dataset)}")
+    print(f"验证集大小: {len(valid_dataset)}")
+    print(f"测试集大小: {len(test_dataset)}")
 
+    # 创建数据加载器
+    print(f"创建数据加载器，批次大小: {args.batch_size}")
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle=True, collate_fn = custom_collate_fn)
     valid_loader = DataLoader(valid_dataset, batch_size = 1, collate_fn = custom_collate_fn)
     test_loader = DataLoader(test_dataset, batch_size = 1, collate_fn = custom_collate_fn)
 
-    print("Dataset Loaded!")
+    print("数据集加载完成!")
 
     gnn = args.gnn
     layers = args.layers
