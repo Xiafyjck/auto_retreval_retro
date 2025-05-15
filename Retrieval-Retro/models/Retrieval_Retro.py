@@ -51,7 +51,13 @@ class Retrieval_Retro(nn.Module):
         try:
             # 检查输入数据的结构
             if not isinstance(data, tuple) or len(data) != 3:
-                raise ValueError(f"输入数据不是有效的元组，而是 {type(data)}，长度: {len(data) if hasattr(data, '__len__') else 'N/A'}")
+                print(f"输入数据不是有效的元组，而是 {type(data)}，长度: {len(data) if hasattr(data, '__len__') else 'N/A'}")
+                # 如果是列表而不是元组，尝试转换
+                if isinstance(data, list) and len(data) == 3:
+                    data = tuple(data)
+                    print("已将列表转换为元组")
+                else:
+                    raise ValueError(f"输入数据不是有效的元组或列表，无法处理")
             
             main_graph = data[0].to(self.device)
             additional_graph = data[1]

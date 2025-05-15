@@ -83,7 +83,7 @@ def custom_collate_fn(batch):
         batched_second_additional_graphs = Batch.from_data_list(second_additional_graphs)
         
         # Return batched main graphs and both sets of batched additional graphs
-        return batched_main_graphs, batched_first_additional_graphs, batched_second_additional_graphs
+        return (batched_main_graphs, batched_first_additional_graphs, batched_second_additional_graphs)
         
     except Exception as e:
         print(f"批次处理错误: {e}")
