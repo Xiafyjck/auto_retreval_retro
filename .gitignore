@@ -1,0 +1,12 @@
+# 保留 Retrieval-Retro/dataset 空文件夹
+Retrieval-Retro/dataset/*
+!Retrieval-Retro/dataset/.gitkeep
+
+.DS_Store
+
+# 忽略origin_RR
+origin_RR/dataset/*
+!origin_RR/dataset/.gitkeep
+
+# 忽略pycache
+__pycache__
