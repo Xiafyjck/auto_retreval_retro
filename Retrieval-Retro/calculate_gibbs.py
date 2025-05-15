@@ -262,7 +262,7 @@ def main():
     if os.path.exists(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt'):
         print(f"训练集差异文件已存在，跳过计算")
         # 分批加载以节省内存
-        train_matrix = torch.load(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt', map_location='cpu')
+        train_matrix = torch.load(f'./dataset/{args.split}/train_formation_energy_calculation_delta_G.pt', map_location='cpu', weights_only=False)
         # 只将用于处理的部分移到GPU
         train_matrix = train_matrix.to(device)
     else:
@@ -309,7 +309,7 @@ def main():
     # 检查是否已存在差异文件
     if os.path.exists(f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt'):
         print(f"验证集差异文件已存在，跳过计算")
-        valid_matrix = torch.load(f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt', map_location='cpu')
+        valid_matrix = torch.load(f'./dataset/{args.split}/valid_formation_energy_calculation_delta_G.pt', map_location='cpu', weights_only=False)
         valid_matrix = valid_matrix.to(device)
     else:
         # 在CPU上创建结果张量
@@ -343,7 +343,7 @@ def main():
     # 检查是否已存在差异文件
     if os.path.exists(f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt'):
         print(f"测试集差异文件已存在，跳过计算")
-        test_matrix = torch.load(f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt', map_location='cpu')
+        test_matrix = torch.load(f'./dataset/{args.split}/test_formation_energy_calculation_delta_G.pt', map_location='cpu', weights_only=False)
         test_matrix = test_matrix.to(device)
     else:
         # 在CPU上创建结果张量

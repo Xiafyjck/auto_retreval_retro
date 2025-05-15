@@ -2,6 +2,12 @@
 Retrieval-Retro/dataset/*
 !Retrieval-Retro/dataset/.gitkeep
 
+Retrieval-Retro/experiments/*
+!Retrieval-Retro/experiments/.gitkeep
+
+data_processing/proceed/*
+
+
 .DS_Store
 
 # 忽略origin_RR
