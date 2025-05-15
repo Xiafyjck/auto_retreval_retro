@@ -101,10 +101,11 @@ class Retrieval_Retro(nn.Module):
         return template_output
             
     def process_additional_graphs(self, additional_graph, batch_size):
-        """处理额外图，无条件处理所有输入"""
+        """处理批处理后的额外图"""
         add_graph_outputs = []
         
-        # 设置基本属性 - 无条件设置，确保接口一致
+        # 处理PyG批处理对象（由custom_collate_fn创建）
+        # 确保必要属性存在
         if not hasattr(additional_graph, 'fc_weight'):
             additional_graph.fc_weight = torch.ones(additional_graph.x.size(0), device=self.device)
         
@@ -115,27 +116,25 @@ class Retrieval_Retro(nn.Module):
         add_graph_x = self.gnn(additional_graph)
         add_weighted_x = add_graph_x * additional_graph.fc_weight.reshape(-1, 1)
         
-        # 按批次分组处理
+        # 为每个主图样本创建嵌入
         for i in range(batch_size):
             mask = (additional_graph.batch == i)
             if mask.sum() > 0:
+                # 有对应此批次样本的额外图
                 weighted_x_i = add_weighted_x[mask]
-                graph_emb_i = scatter_sum(weighted_x_i, 
-                                        torch.zeros(weighted_x_i.size(0), 
-                                                   dtype=torch.long, 
-                                                   device=self.device), 
-                                        dim=0)
+                zeros = torch.zeros(weighted_x_i.size(0), dtype=torch.long, device=self.device)
+                graph_emb_i = scatter_sum(weighted_x_i, zeros, dim=0)
                 add_graph_outputs.append(graph_emb_i)
             else:
-                # 如果该批次没有节点，添加零向量
+                # 该批次样本没有对应的额外图
                 add_graph_outputs.append(torch.zeros((1, self.hidden_dim), device=self.device))
         
-        # 确保输出长度与batch_size一致
-        if len(add_graph_outputs) < batch_size:
-            for i in range(batch_size - len(add_graph_outputs)):
-                add_graph_outputs.append(torch.zeros((1, self.hidden_dim), device=self.device))
-        elif len(add_graph_outputs) > batch_size:
+        # 确保结果长度与batch_size一致
+        while len(add_graph_outputs) < batch_size:
+            add_graph_outputs.append(torch.zeros((1, self.hidden_dim), device=self.device))
+        
+        if len(add_graph_outputs) > batch_size:
             add_graph_outputs = add_graph_outputs[:batch_size]
             
-        # 堆叠嵌入向量
+        # 返回堆叠的嵌入向量
         return torch.stack(add_graph_outputs, dim=0) 

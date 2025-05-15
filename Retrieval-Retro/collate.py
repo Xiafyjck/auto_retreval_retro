@@ -92,17 +92,6 @@ def main():
         print(f"数据集大小: 训练集={len(train_dataset)}, 验证集={len(valid_dataset)}, 测试集={len(test_dataset)}")
         print(f"MPC检索结果数量: {len(candi_data)}")
         print(f"NRE检索结果数量: {len(candi_data_2)}")
-        
-        # 检查数据结构
-        try:
-            sample = train_dataset[0]
-            print(f"\n数据样本结构检查:")
-            print(f"节点特征维度: {sample.x.shape}")
-            print(f"边特征维度: {sample.edge_attr.shape}")
-            print(f"标签维度: {sample.y_lb_one.shape}")
-            print(f"多标签维度: {sample.y_multiple.shape}")
-        except Exception as e:
-            print(f"数据样本结构检查失败: {e}")
             
     except Exception as e:
         print(f"错误: 无法加载数据: {e}")
@@ -128,8 +117,6 @@ def main():
         progress_bar.update(1)
         
         try:
-            tmp = [data]
-            
             # 确保索引存在于检索结果中
             idx_str = str(idx)
             if idx_str not in candi_data:
@@ -155,9 +142,9 @@ def main():
                 error_count += 1
                 continue
             
-            # 创建子图容器
-            subgraph = []
-            subgraph_2 = []
+            # 创建子图容器 - 主图和两组额外图列表
+            subgraph = []  # MPC检索结果
+            subgraph_2 = []  # NRE检索结果
             
             # 处理MPC检索结果
             for i in candi_idx:
@@ -173,6 +160,7 @@ def main():
                     comp_fea = train_dataset[i].comp_fea
                     y = train_dataset[i].y_lb_one
                     
+                    # 创建检索图对象 - 与原始模型兼容
                     candi_graph = Data(
                         x=x, 
                         edge_index=edge_index, 
@@ -181,6 +169,8 @@ def main():
                         comp_fea=comp_fea, 
                         precursor=y
                     )
+                    # 确保模型需要的属性存在
+                    candi_graph.batch = torch.zeros(candi_graph.x.size(0), dtype=torch.long)
                     subgraph.append(candi_graph)
                 except Exception as e:
                     print(f"处理MPC候选 {i} 时出错: {e}")
@@ -199,6 +189,7 @@ def main():
                     comp_fea = train_dataset[i].comp_fea
                     y = train_dataset[i].y_lb_one
                     
+                    # 创建检索图对象 - 与原始模型兼容
                     candi_graph2 = Data(
                         x=x, 
                         edge_index=edge_index, 
@@ -207,6 +198,8 @@ def main():
                         comp_fea=comp_fea, 
                         precursor=y
                     )
+                    # 确保模型需要的属性存在
+                    candi_graph2.batch = torch.zeros(candi_graph2.x.size(0), dtype=torch.long)
                     subgraph_2.append(candi_graph2)
                 except Exception as e:
                     print(f"处理NRE候选 {i} 时出错: {e}")
@@ -222,10 +215,9 @@ def main():
                 error_count += 1
                 continue
 
-            # 将所有结果添加到数据中
-            tmp.append(subgraph)
-            tmp.append(subgraph_2)
-            new_data.append(tuple(tmp))
+            # 创建原始模型期望的数据结构: (main_graph, [mpc_graphs], [nre_graphs])
+            item = (data, subgraph, subgraph_2)
+            new_data.append(item)
             success_count += 1
             
             # 每500个样本打印一次进度
@@ -248,31 +240,26 @@ def main():
     print(f"保存整合结果到: {output_path}, 共 {len(new_data)} 个样本")
     
     try:
+        # 保存数据
         torch.save(new_data, output_path)
         print(f"{mode} 数据集整合完成!")
-    except Exception as e:
-        print(f"保存结果时出错: {e}")
-        return
         
-    # 验证保存的文件
-    try:
+        # 验证保存的文件
         print(f"验证保存的文件...")
         test_load = torch.load(output_path)
         print(f"验证成功! 文件包含 {len(test_load)} 个样本")
         
-        # 检查数据结构
         sample = test_load[0]
-        print(f"主图节点特征维度: {sample[0].x.shape}")
-        print(f"主图边特征维度: {sample[0].edge_attr.shape}")
-        print(f"检索子图数量: MPC={len(sample[1])}, NRE={len(sample[2])}")
+        print(f"数据结构验证:")
+        print(f"- 类型: {type(sample)}")
+        print(f"- 元素数量: {len(sample)}")
+        print(f"- 主图节点特征: {sample[0].x.shape}")
+        print(f"- MPC检索图数量: {len(sample[1])}")
+        print(f"- NRE检索图数量: {len(sample[2])}")
         
-        if len(sample[1]) > 0:
-            print(f"MPC检索图节点特征维度: {sample[1][0].x.shape}")
-        if len(sample[2]) > 0:
-            print(f"NRE检索图节点特征维度: {sample[2][0].x.shape}")
-            
     except Exception as e:
-        print(f"验证保存的文件时出错: {e}")
+        print(f"保存或验证结果时出错: {e}")
+        return
         
     print(f"处理完成! 总用时: {time.time() - start_time:.2f}秒")
     print(f"总共处理: {len(dataset)} 个样本")

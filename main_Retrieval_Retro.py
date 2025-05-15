@@ -25,26 +25,54 @@ from torch_geometric.data import Batch
 
 def custom_collate_fn(batch):
     """将数据批次转换为模型需要的标准格式"""
-    # 标准化批次中的每一项为元组
-    for i, item in enumerate(batch):
+    # 确保每个元素都是元组
+    processed_batch = []
+    for item in batch:
         if isinstance(item, list) and len(item) == 3:
-            batch[i] = tuple(item)
+            processed_batch.append(tuple(item))
+        elif isinstance(item, tuple) and len(item) == 3:
+            processed_batch.append(item)
+        else:
+            # 跳过格式不正确的元素
+            continue
+    
+    if not processed_batch:
+        return None
     
     # 批处理主图
-    main_graphs = [item[0] for item in batch]
+    main_graphs = []
+    for item in processed_batch:
+        if hasattr(item[0], 'x') and hasattr(item[0], 'edge_index'):
+            main_graphs.append(item[0])
+    
+    if not main_graphs:
+        return None
+        
     batched_main_graphs = Batch.from_data_list(main_graphs)
     
-    # 批处理第一组额外图 (MPC)
-    first_additional_graphs = []
-    for item in batch:
-        for graph in item[1]:
-            # 确保有precursor字段
-            if not hasattr(graph, 'precursor') and hasattr(graph, 'y_lb_one'):
-                graph.precursor = graph.y_lb_one
-            first_additional_graphs.append(graph)
+    # 准备批处理MPC额外图
+    # 获取每个样本的MPC图
+    all_mpc_graphs = []
+    # 每个元素的MPC图数量，用于后续判断
+    graphs_per_sample = []
     
-    # 如果没有额外图，创建填充图
-    if not first_additional_graphs:
+    for item in processed_batch:
+        sample_graphs = []
+        if isinstance(item[1], list):
+            # 处理每个MPC图
+            for graph in item[1]:
+                if hasattr(graph, 'x') and hasattr(graph, 'edge_index'):
+                    # 确保有precursor字段
+                    if not hasattr(graph, 'precursor') and hasattr(graph, 'y_lb_one'):
+                        graph.precursor = graph.y_lb_one
+                    sample_graphs.append(graph)
+        
+        # 添加本样本的所有有效MPC图
+        all_mpc_graphs.extend(sample_graphs)
+        graphs_per_sample.append(len(sample_graphs))
+    
+    # 如果没有MPC图，创建一个填充图
+    if not all_mpc_graphs:
         from torch_geometric.data import Data
         dummy_graph = Data(
             x=torch.zeros((1, main_graphs[0].x.size(1))),
@@ -53,21 +81,30 @@ def custom_collate_fn(batch):
             fc_weight=torch.ones(1),
             precursor=torch.zeros(main_graphs[0].y_lb_one.shape) if hasattr(main_graphs[0], 'y_lb_one') else torch.zeros(798)
         )
-        first_additional_graphs = [dummy_graph]
+        all_mpc_graphs = [dummy_graph]
     
-    batched_first_additional_graphs = Batch.from_data_list(first_additional_graphs)
+    # 对所有MPC图进行批处理
+    batched_mpc_graphs = Batch.from_data_list(all_mpc_graphs)
     
-    # 批处理第二组额外图 (NRE)
-    second_additional_graphs = []
-    for item in batch:
-        for graph in item[2]:
-            # 确保有precursor字段
-            if not hasattr(graph, 'precursor') and hasattr(graph, 'y_lb_one'):
-                graph.precursor = graph.y_lb_one
-            second_additional_graphs.append(graph)
+    # 准备批处理NRE额外图
+    all_nre_graphs = []
     
-    # 如果没有额外图，创建填充图
-    if not second_additional_graphs:
+    for item in processed_batch:
+        sample_graphs = []
+        if isinstance(item[2], list):
+            # 处理每个NRE图
+            for graph in item[2]:
+                if hasattr(graph, 'x') and hasattr(graph, 'edge_index'):
+                    # 确保有precursor字段
+                    if not hasattr(graph, 'precursor') and hasattr(graph, 'y_lb_one'):
+                        graph.precursor = graph.y_lb_one
+                    sample_graphs.append(graph)
+        
+        # 添加本样本的所有有效NRE图
+        all_nre_graphs.extend(sample_graphs)
+    
+    # 如果没有NRE图，创建一个填充图
+    if not all_nre_graphs:
         from torch_geometric.data import Data
         dummy_graph = Data(
             x=torch.zeros((1, main_graphs[0].x.size(1))),
@@ -76,12 +113,13 @@ def custom_collate_fn(batch):
             fc_weight=torch.ones(1),
             precursor=torch.zeros(main_graphs[0].y_lb_one.shape) if hasattr(main_graphs[0], 'y_lb_one') else torch.zeros(798)
         )
-        second_additional_graphs = [dummy_graph]
+        all_nre_graphs = [dummy_graph]
     
-    batched_second_additional_graphs = Batch.from_data_list(second_additional_graphs)
+    # 对所有NRE图进行批处理  
+    batched_nre_graphs = Batch.from_data_list(all_nre_graphs)
     
-    # 返回标准化的元组
-    return (batched_main_graphs, batched_first_additional_graphs, batched_second_additional_graphs)
+    # 现在我们有3个批处理的图对象，将它们作为元组返回给模型
+    return (batched_main_graphs, batched_mpc_graphs, batched_nre_graphs)
 
 def seed_everything(seed):
     # To fix the random seed
