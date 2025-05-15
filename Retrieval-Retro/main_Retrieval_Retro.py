@@ -40,7 +40,11 @@ def custom_collate_fn(batch):
         for i, item in enumerate(batch):
             if not hasattr(item[0], 'x') or not hasattr(item[0], 'edge_index'):
                 raise ValueError(f"第 {i} 项的主图不是一个有效的PyG Data对象")
-            main_graphs.append(item[0])
+            # 确保主图已经在正确的设备上
+            if hasattr(item[0], 'to') and hasattr(item[0], 'device') and str(item[0].device) != str(torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+                main_graphs.append(item[0].to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')))
+            else:
+                main_graphs.append(item[0])
         
         batched_main_graphs = Batch.from_data_list(main_graphs)
         
@@ -152,6 +156,24 @@ def main():
         print(f"错误: 无法加载数据集文件: {e}")
         return
 
+    # 定义一个函数，确保数据集中的所有张量都在正确的设备上
+    def ensure_tensors_on_device(dataset, device):
+        for i in range(len(dataset)):
+            if isinstance(dataset[i], tuple) and len(dataset[i]) == 3:
+                # 主图
+                if hasattr(dataset[i][0], 'to'):
+                    dataset[i] = (dataset[i][0].to(device), dataset[i][1], dataset[i][2])
+                # 检索图
+                # 注意：这里不提前将检索图移到GPU上，因为它们会在模型前向传播时按需移动
+        return dataset
+    
+    # 确保所有数据集都在正确的设备上
+    print("正在确保所有张量都在正确的设备上...")
+    train_dataset = ensure_tensors_on_device(train_dataset, device)
+    valid_dataset = ensure_tensors_on_device(valid_dataset, device)
+    test_dataset = ensure_tensors_on_device(test_dataset, device)
+    print("数据集设备检查完成")
+    
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle=True, collate_fn = custom_collate_fn)
     valid_loader = DataLoader(valid_dataset, batch_size = 1, collate_fn = custom_collate_fn)
     test_loader = DataLoader(test_dataset, batch_size = 1, collate_fn = custom_collate_fn)
@@ -390,7 +412,11 @@ def main():
                     template_output = model(batch)
                     assert batch[0].y_multiple_len.sum().item() == batch[0].y_multiple.size(0)
 
-                    absolute_indices = torch.cat([torch.tensor([0]).to(device), torch.cumsum(batch[0].y_multiple_len, dim=0)])
+                    # 确保batch[0].y_multiple_len在正确的设备上
+                    batch[0].y_multiple_len = batch[0].y_multiple_len.to(device)
+                    batch[0].y_multiple = batch[0].y_multiple.to(device)
+                    
+                    absolute_indices = torch.cat([torch.tensor([0], device=device), torch.cumsum(batch[0].y_multiple_len, dim=0).to(device)])
                     split_tensors = [batch[0].y_multiple[start:end] for start, end in zip(absolute_indices[:-1], absolute_indices[1:])]
 
                     multi_label = batch[0].y_multiple
@@ -443,7 +469,11 @@ def main():
 
                             assert batch[0].y_multiple_len.sum().item() == batch[0].y_multiple.size(0)
 
-                            absolute_indices = torch.cat([torch.tensor([0]).to(device), torch.cumsum(batch[0].y_multiple_len, dim=0)])
+                            # 确保batch[0].y_multiple_len在正确的设备上
+                            batch[0].y_multiple_len = batch[0].y_multiple_len.to(device)
+                            batch[0].y_multiple = batch[0].y_multiple.to(device)
+                            
+                            absolute_indices = torch.cat([torch.tensor([0], device=device), torch.cumsum(batch[0].y_multiple_len, dim=0).to(device)])
                             split_tensors = [batch[0].y_multiple[start:end] for start, end in zip(absolute_indices[:-1], absolute_indices[1:])]
 
                             multi_label = batch[0].y_multiple

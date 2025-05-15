@@ -187,7 +187,7 @@ class Retrieval_Retro(nn.Module):
                 
             # MPC
             # Self Attention Layers
-            main_graph_repeat = main_graph_emb.unsqueeze(1).repeat(1, add_pooled.shape[1], 1)
+            main_graph_repeat = main_graph_emb.unsqueeze(1).repeat(1, add_pooled.shape[1], 1).to(self.device)
             add_pooled = torch.cat([add_pooled, main_graph_repeat], dim=2)
             add_pooled = self.fusion_linear(add_pooled)
 
@@ -198,6 +198,7 @@ class Retrieval_Retro(nn.Module):
 
             # NRE
             # Self Attention Layers
+            main_graph_repeat = main_graph_emb.unsqueeze(1).repeat(1, add_pooled_2.shape[1], 1).to(self.device)
             add_pooled_2 = torch.cat([add_pooled_2, main_graph_repeat], dim=2)
             add_pooled_2 = self.fusion_linear_2(add_pooled_2)
 
@@ -207,7 +208,7 @@ class Retrieval_Retro(nn.Module):
             cross_attn_output_2 = self.cross_attention_2(main_graph_emb.unsqueeze(0), add_pooled_self_2, add_pooled_self_2)
 
             # 拼接所有特征
-            classifier_input = torch.cat([main_graph_emb, cross_attn_output.squeeze(0), cross_attn_output_2.squeeze(0)], dim=1)
+            classifier_input = torch.cat([main_graph_emb, cross_attn_output.squeeze(0), cross_attn_output_2.squeeze(0)], dim=1).to(self.device)
             
             # 确保classifier_input的第一维是batch_size
             if classifier_input.size(0) != batch_size:
