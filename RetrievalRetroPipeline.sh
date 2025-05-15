@@ -306,7 +306,7 @@ if [ -f "$TRAIN_EMBEDDING" ] && [ -f "$VALID_EMBEDDING" ] && [ -f "$TEST_EMBEDDI
 else
     echo "嵌入向量文件不存在，开始训练MPC模型..."
     # 训练MPC模型
-    python train_mpc.py --device "${GPU_ID}" --lr 0.0005 --batch_size 32 --loss adaptive --split "${DATASET_NAME}" --epochs 1000
+    python train_mpc.py --device "${GPU_ID}" --split "${DATASET_NAME}"
     if [ $? -ne 0 ]; then
         echo "训练MPC模型失败"
         exit 1
@@ -511,7 +511,7 @@ if [ -f "$RESULT_FILE" ]; then
     echo "模型结果文件已存在，跳过模型训练步骤"
 else
     echo "模型结果文件不存在，开始训练主模型..."
-    python main_Retrieval_Retro.py --device ${GPU_ID} --K ${K_VALUE} --batch_size 32 --hidden_dim 64 --epochs 20 --lr 0.0005 --es 30 --split ${DATASET_NAME}
+    python main_Retrieval_Retro.py --device ${GPU_ID} --K ${K_VALUE} --split ${DATASET_NAME}
 fi
 
 # 返回原目录

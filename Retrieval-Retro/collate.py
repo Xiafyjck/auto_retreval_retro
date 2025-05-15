@@ -257,7 +257,7 @@ def main():
     # 验证保存的文件
     try:
         print(f"验证保存的文件...")
-        test_load = torch.load(output_path)
+        test_load = torch.load(output_path, weights_only=False)
         print(f"验证成功! 文件包含 {len(test_load)} 个样本")
         
         # 检查数据结构
