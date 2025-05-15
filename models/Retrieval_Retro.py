@@ -51,7 +51,7 @@ class Retrieval_Retro(nn.Module):
         try:
             # 检查输入数据的结构
             if isinstance(data, list):
-                print("输入数据不是元组，而是列表，长度：", len(data))
+                print(f"输入数据不是元组，而是列表，长度: {len(data)}")
                 data = tuple(data)
                 print("已将列表转换为元组")
             elif not isinstance(data, tuple) or len(data) != 3:
@@ -68,12 +68,6 @@ class Retrieval_Retro(nn.Module):
                 
             # 获取批次大小
             batch_size = len(main_graph.ptr) - 1 if hasattr(main_graph, 'ptr') else 1
-            if not hasattr(self, '_printed_batch_size'):
-                print(f"批次大小: {batch_size}")
-                print(f"主图类型: {type(main_graph)}, x形状: {main_graph.x.shape}")
-                print(f"额外图1类型: {type(additional_graph)}, x形状: {additional_graph.x.shape}")
-                print(f"额外图2类型: {type(additional_graph_2)}, x形状: {additional_graph_2.x.shape}")
-                self._printed_batch_size = True
             
             # 处理主图
             main_graph_x = self.gnn(main_graph)
@@ -138,7 +132,7 @@ class Retrieval_Retro(nn.Module):
             return torch.zeros((num_samples, self.output_dim), device=self.device)
             
     def process_additional_graphs(self, additional_graph, batch_size, main_graph_emb, graph_type=""):
-        """处理额外图"""
+        """处理额外图，符合collate.py的标准格式"""
         add_graph_outputs = []
         
         # 检查additional_graph是否是PyG批处理对象
@@ -151,6 +145,12 @@ class Retrieval_Retro(nn.Module):
                 elif additional_graph.fc_weight.shape != (additional_graph.x.size(0),):
                     print(f"警告: {graph_type}图fc_weight形状不匹配 {additional_graph.fc_weight.shape} vs {(additional_graph.x.size(0),)}, 使用默认值")
                     additional_graph.fc_weight = torch.ones(additional_graph.x.size(0), device=self.device)
+                
+                # 检查precursor字段（collate.py创建的检索图有这个字段）
+                if hasattr(additional_graph, 'precursor'):
+                    if not hasattr(self, '_checked_precursor'):
+                        print(f"发现 {graph_type}图有precursor字段")
+                        self._checked_precursor = True
                 
                 # 正常处理PyG批处理对象
                 add_graph_x = self.gnn(additional_graph)
@@ -177,12 +177,14 @@ class Retrieval_Retro(nn.Module):
                         add_graph_outputs.append(torch.zeros((1, self.hidden_dim), device=self.device))
             except Exception as e:
                 print(f"处理{graph_type}图出错: {e}")
+                import traceback
+                traceback.print_exc()
                 # 创建零向量替代
                 for i in range(batch_size):
                     add_graph_outputs.append(torch.zeros((1, self.hidden_dim), device=self.device))
         else:
             # 不是PyG批处理对象
-            print(f"警告: {graph_type}图不是PyG批处理对象 ({type(additional_graph)})，跳过处理")
+            print(f"警告: {graph_type}图不是PyG批处理对象，跳过处理")
             # 创建零向量替代
             for i in range(batch_size):
                 add_graph_outputs.append(torch.zeros((1, self.hidden_dim), device=self.device))

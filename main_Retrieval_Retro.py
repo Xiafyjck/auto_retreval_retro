@@ -28,7 +28,8 @@ def custom_collate_fn(batch):
     try:
         # 确保batch不为空
         if not batch:
-            raise ValueError("空批次")
+            print("警告: 空批次")
+            return None
         
         # 批次结构检查
         for i, item in enumerate(batch):
@@ -37,15 +38,21 @@ def custom_collate_fn(batch):
                 if isinstance(item, list) and len(item) == 3:
                     batch[i] = tuple(item)
                 else:
-                    raise ValueError(f"批次项 {i} 不是一个包含3个元素的元组或列表，而是 {type(item)}，长度: {len(item) if hasattr(item, '__len__') else 'N/A'}")
+                    print(f"警告: 批次项 {i} 不是一个包含3个元素的元组或列表，而是 {type(item)}，长度: {len(item) if hasattr(item, '__len__') else 'N/A'}")
+                    return None
         
         # Batch main graphs
         main_graphs = []
         for i, item in enumerate(batch):
             if not hasattr(item[0], 'x') or not hasattr(item[0], 'edge_index'):
-                raise ValueError(f"第 {i} 项的主图不是一个有效的PyG Data对象")
+                print(f"警告: 第 {i} 项的主图不是一个有效的PyG Data对象")
+                continue
             main_graphs.append(item[0])
         
+        if not main_graphs:
+            print("警告: 没有有效的主图")
+            return None
+            
         batched_main_graphs = Batch.from_data_list(main_graphs)
         
         # Handle the first set of additional graphs
@@ -59,7 +66,18 @@ def custom_collate_fn(batch):
                 if not hasattr(graph, 'x') or not hasattr(graph, 'edge_index'):
                     print(f"警告: 第 {i} 项的第一组额外图中的第 {j} 个图不是一个有效的PyG Data对象")
                     continue
-                first_additional_graphs.append(graph)
+                # 保留precursor字段
+                if hasattr(graph, 'precursor'):
+                    first_additional_graphs.append(graph)
+                else:
+                    # 如果缺少precursor，尝试从y_lb_one创建
+                    if hasattr(graph, 'y_lb_one'):
+                        graph.precursor = graph.y_lb_one
+                        first_additional_graphs.append(graph)
+                    else:
+                        # 缺少关键字段
+                        print(f"警告: 第 {i} 项的第一组额外图中的第 {j} 个图缺少precursor和y_lb_one字段")
+                        continue
         
         # 确保有图形可以批处理
         if not first_additional_graphs:
@@ -69,7 +87,8 @@ def custom_collate_fn(batch):
                 x=torch.zeros((1, main_graphs[0].x.size(1))),
                 edge_index=torch.zeros((2, 1), dtype=torch.long),
                 edge_attr=torch.zeros((1, main_graphs[0].edge_attr.size(1))),
-                fc_weight=torch.ones(1)
+                fc_weight=torch.ones(1),
+                precursor=torch.zeros(main_graphs[0].y_lb_one.shape) if hasattr(main_graphs[0], 'y_lb_one') else torch.zeros(798)
             )
             first_additional_graphs = [dummy_graph]
             
@@ -86,7 +105,18 @@ def custom_collate_fn(batch):
                 if not hasattr(graph, 'x') or not hasattr(graph, 'edge_index'):
                     print(f"警告: 第 {i} 项的第二组额外图中的第 {j} 个图不是一个有效的PyG Data对象")
                     continue
-                second_additional_graphs.append(graph)
+                # 保留precursor字段
+                if hasattr(graph, 'precursor'):
+                    second_additional_graphs.append(graph)
+                else:
+                    # 如果缺少precursor，尝试从y_lb_one创建
+                    if hasattr(graph, 'y_lb_one'):
+                        graph.precursor = graph.y_lb_one
+                        second_additional_graphs.append(graph)
+                    else:
+                        # 缺少关键字段
+                        print(f"警告: 第 {i} 项的第二组额外图中的第 {j} 个图缺少precursor和y_lb_one字段")
+                        continue
         
         # 确保有图形可以批处理
         if not second_additional_graphs:
@@ -96,7 +126,8 @@ def custom_collate_fn(batch):
                 x=torch.zeros((1, main_graphs[0].x.size(1))),
                 edge_index=torch.zeros((2, 1), dtype=torch.long),
                 edge_attr=torch.zeros((1, main_graphs[0].edge_attr.size(1))),
-                fc_weight=torch.ones(1)
+                fc_weight=torch.ones(1),
+                precursor=torch.zeros(main_graphs[0].y_lb_one.shape) if hasattr(main_graphs[0], 'y_lb_one') else torch.zeros(798)
             )
             second_additional_graphs = [dummy_graph]
             
@@ -105,59 +136,13 @@ def custom_collate_fn(batch):
         # 在返回前确保数据类型兼容
         result = (batched_main_graphs, batched_first_additional_graphs, batched_second_additional_graphs)
         
-        # 关键: 验证批处理结果的类型与模型期望的类型兼容
-        # 如果模型期望元组但收到了列表，则进行转换
         return result
         
     except Exception as e:
         print(f"批次处理错误: {e}")
-        print(f"批次类型: {type(batch)}, 批次长度: {len(batch) if hasattr(batch, '__len__') else 'N/A'}")
-        if batch and hasattr(batch, '__getitem__'):
-            print(f"批次第一项类型: {type(batch[0])}")
-            if isinstance(batch[0], tuple) and len(batch[0]) >= 3:
-                print(f"  主图类型: {type(batch[0][0])}")
-                print(f"  第一组额外图类型: {type(batch[0][1])}")
-                print(f"  第二组额外图类型: {type(batch[0][2])}")
-                
-                # 检查第一组额外图的详细信息
-                if isinstance(batch[0][1], list) and batch[0][1]:
-                    print(f"  第一组额外图第一项类型: {type(batch[0][1][0])}")
-                    
-                # 检查第二组额外图的详细信息
-                if isinstance(batch[0][2], list) and batch[0][2]:
-                    print(f"  第二组额外图第一项类型: {type(batch[0][2][0])}")
-        
-        # 创建应急批次
-        try:
-            # 至少返回一个有效结构
-            from torch_geometric.data import Data
-            dummy_main = Data(
-                x=torch.zeros((1, 200)),  # 根据调试信息匹配特征维度
-                edge_index=torch.zeros((2, 1), dtype=torch.long),
-                edge_attr=torch.zeros((1, 400)),  # 根据调试信息匹配特征维度
-                y_lb_one=torch.zeros((1, 32)),  # 估计标签维度
-                y_multiple=torch.zeros((1, 32)),
-                y_multiple_len=torch.ones(1, dtype=torch.long),
-                fc_weight=torch.ones(1)
-            )
-            
-            dummy_add = Data(
-                x=torch.zeros((1, 200)),
-                edge_index=torch.zeros((2, 1), dtype=torch.long),
-                edge_attr=torch.zeros((1, 400)),
-                fc_weight=torch.ones(1)
-            )
-            
-            # 创建批次
-            main_batch = Batch.from_data_list([dummy_main])
-            add1_batch = Batch.from_data_list([dummy_add])
-            add2_batch = Batch.from_data_list([dummy_add])
-            
-            print("返回应急批次数据")
-            return (main_batch, add1_batch, add2_batch)
-        except Exception as inner_e:
-            print(f"创建应急批次失败: {inner_e}")
-            return None
+        import traceback
+        traceback.print_exc()
+        return None
 
 def seed_everything(seed):
     # To fix the random seed
@@ -191,9 +176,51 @@ def main():
     args.split = 'year'
     args.embedder = 'Retrieval_Retro'
 
-    train_dataset = torch.load(f'./dataset/year/year_train_K_3.pt',map_location=device, weights_only=False)
-    valid_dataset = torch.load(f'./dataset/year/year_valid_K_3.pt',map_location=device, weights_only=False)
-    test_dataset = torch.load(f'./dataset/year/year_test_K_3.pt',map_location=device, weights_only=False)
+    print(f"加载数据集: {args.split}")
+    train_file = f'./dataset/{args.split}/{args.split}_train_K_{args.K}.pt'
+    valid_file = f'./dataset/{args.split}/{args.split}_valid_K_{args.K}.pt'
+    test_file = f'./dataset/{args.split}/{args.split}_test_K_{args.K}.pt'
+    
+    # 检查K_{args.K}.pt文件是否存在
+    if not os.path.exists(train_file):
+        # 回退到标准格式
+        print(f"未找到{train_file}，尝试替代文件")
+        train_file = f'./dataset/{args.split}/train_K_{args.K}.pt'
+        valid_file = f'./dataset/{args.split}/valid_K_{args.K}.pt'
+        test_file = f'./dataset/{args.split}/test_K_{args.K}.pt'
+        
+        # 检查是否存在备用路径
+        if not os.path.exists(train_file):
+            # 再尝试一次
+            print(f"未找到{train_file}，尝试最终替代路径")
+            train_file = f'./dataset/{args.split}/train_final_mpc_nre_K_{args.K}.pt'
+            valid_file = f'./dataset/{args.split}/valid_final_mpc_nre_K_{args.K}.pt'
+            test_file = f'./dataset/{args.split}/test_final_mpc_nre_K_{args.K}.pt'
+    
+    print(f"训练集文件: {train_file}")
+    print(f"验证集文件: {valid_file}")
+    print(f"测试集文件: {test_file}")
+    
+    try:
+        train_dataset = torch.load(train_file, map_location=device, weights_only=False)
+        valid_dataset = torch.load(valid_file, map_location=device, weights_only=False)
+        test_dataset = torch.load(test_file, map_location=device, weights_only=False)
+        
+        # 检查数据类型
+        if isinstance(train_dataset, list):
+            print(f"数据格式是列表，元素数量: {len(train_dataset)}")
+            if len(train_dataset) > 0:
+                print(f"第一个元素类型: {type(train_dataset[0])}")
+                # 确保元素是元组
+                if isinstance(train_dataset[0], list):
+                    print("数据元素是列表，转换为元组")
+                    train_dataset = [tuple(x) if isinstance(x, list) else x for x in train_dataset]
+                    valid_dataset = [tuple(x) if isinstance(x, list) else x for x in valid_dataset]
+                    test_dataset = [tuple(x) if isinstance(x, list) else x for x in test_dataset]
+        
+    except Exception as e:
+        print(f"错误: 无法加载数据集文件: {e}")
+        return
 
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle=True, collate_fn = custom_collate_fn)
     valid_loader = DataLoader(valid_dataset, batch_size = 1, collate_fn = custom_collate_fn)
