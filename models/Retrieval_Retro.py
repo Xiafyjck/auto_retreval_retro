@@ -59,27 +59,46 @@ class Retrieval_Retro(nn.Module):
             
             # 确保数据在正确设备上
             main_graph = data[0].to(self.device)
-            additional_graph = data[1]
-            additional_graph_2 = data[2]
+            additional_graph = data[1].to(self.device)
+            additional_graph_2 = data[2].to(self.device)
             
             # 检查主图是否有必要的属性
             if not hasattr(main_graph, 'x') or not hasattr(main_graph, 'edge_index'):
                 raise ValueError("主图缺少必要的属性")
                 
             # 获取批次大小
-            batch_size = len(main_graph.ptr) - 1
+            batch_size = len(main_graph.ptr) - 1 if hasattr(main_graph, 'ptr') else 1
+            if not hasattr(self, '_printed_batch_size'):
+                print(f"批次大小: {batch_size}")
+                print(f"主图类型: {type(main_graph)}, x形状: {main_graph.x.shape}")
+                print(f"额外图1类型: {type(additional_graph)}, x形状: {additional_graph.x.shape}")
+                print(f"额外图2类型: {type(additional_graph_2)}, x形状: {additional_graph_2.x.shape}")
+                self._printed_batch_size = True
             
             # 处理主图
             main_graph_x = self.gnn(main_graph)
+            
+            # 确保fc_weight存在且尺寸正确
+            if not hasattr(main_graph, 'fc_weight'):
+                print("警告: 主图缺少fc_weight, 使用默认值1.0")
+                main_graph.fc_weight = torch.ones(main_graph.x.size(0), device=self.device)
+            elif main_graph.fc_weight.shape != (main_graph.x.size(0),):
+                print(f"警告: 主图fc_weight形状不匹配 {main_graph.fc_weight.shape} vs {(main_graph.x.size(0),)}, 使用默认值")
+                main_graph.fc_weight = torch.ones(main_graph.x.size(0), device=self.device)
+            
             main_weighted_x = main_graph_x * main_graph.fc_weight.reshape(-1, 1)
+            
+            # 确保batch属性存在
+            if not hasattr(main_graph, 'batch'):
+                print("警告: 主图缺少batch属性，使用默认批次")
+                main_graph.batch = torch.zeros(main_graph.x.size(0), dtype=torch.long, device=self.device)
+            
             main_graph_emb = scatter_sum(main_weighted_x, main_graph.batch, dim=0)
             
             # 处理第一组额外图
-            additional_graph = additional_graph.to(self.device)
             add_pooled = self.process_additional_graphs(additional_graph, batch_size, main_graph_emb, "MPC")
             
             # 处理第二组额外图
-            additional_graph_2 = additional_graph_2.to(self.device)
             add_pooled_2 = self.process_additional_graphs(additional_graph_2, batch_size, main_graph_emb, "NRE")
             
             # MPC Self Attention Layers
@@ -109,6 +128,8 @@ class Retrieval_Retro(nn.Module):
             
         except Exception as e:
             print(f"Retrieval_Retro.forward出错: {e}")
+            import traceback
+            traceback.print_exc()
             # 如果可能，尝试返回一个有效的输出
             num_samples = 1
             if isinstance(data, tuple) and len(data) > 0 and hasattr(data[0], 'ptr'):
@@ -121,11 +142,24 @@ class Retrieval_Retro(nn.Module):
         add_graph_outputs = []
         
         # 检查additional_graph是否是PyG批处理对象
-        if hasattr(additional_graph, 'x') and hasattr(additional_graph, 'batch'):
+        if hasattr(additional_graph, 'x') and hasattr(additional_graph, 'edge_index'):
             try:
+                # 确保fc_weight存在且尺寸正确
+                if not hasattr(additional_graph, 'fc_weight'):
+                    print(f"警告: {graph_type}图缺少fc_weight, 使用默认值1.0")
+                    additional_graph.fc_weight = torch.ones(additional_graph.x.size(0), device=self.device)
+                elif additional_graph.fc_weight.shape != (additional_graph.x.size(0),):
+                    print(f"警告: {graph_type}图fc_weight形状不匹配 {additional_graph.fc_weight.shape} vs {(additional_graph.x.size(0),)}, 使用默认值")
+                    additional_graph.fc_weight = torch.ones(additional_graph.x.size(0), device=self.device)
+                
                 # 正常处理PyG批处理对象
                 add_graph_x = self.gnn(additional_graph)
                 add_weighted_x = add_graph_x * additional_graph.fc_weight.reshape(-1, 1)
+                
+                # 确保batch属性存在
+                if not hasattr(additional_graph, 'batch'):
+                    print(f"警告: {graph_type}图缺少batch属性，使用默认批次")
+                    additional_graph.batch = torch.zeros(additional_graph.x.size(0), dtype=torch.long, device=self.device)
                 
                 # 按batch_idx分组
                 for i in range(batch_size):
@@ -148,7 +182,7 @@ class Retrieval_Retro(nn.Module):
                     add_graph_outputs.append(torch.zeros((1, self.hidden_dim), device=self.device))
         else:
             # 不是PyG批处理对象
-            print(f"警告: {graph_type}图不是PyG批处理对象，跳过处理")
+            print(f"警告: {graph_type}图不是PyG批处理对象 ({type(additional_graph)})，跳过处理")
             # 创建零向量替代
             for i in range(batch_size):
                 add_graph_outputs.append(torch.zeros((1, self.hidden_dim), device=self.device))

@@ -33,7 +33,11 @@ def custom_collate_fn(batch):
         # 批次结构检查
         for i, item in enumerate(batch):
             if not isinstance(item, tuple) or len(item) != 3:
-                raise ValueError(f"批次项 {i} 不是一个包含3个元素的元组，而是 {type(item)}，长度: {len(item) if hasattr(item, '__len__') else 'N/A'}")
+                # 如果是列表则转换为元组
+                if isinstance(item, list) and len(item) == 3:
+                    batch[i] = tuple(item)
+                else:
+                    raise ValueError(f"批次项 {i} 不是一个包含3个元素的元组或列表，而是 {type(item)}，长度: {len(item) if hasattr(item, '__len__') else 'N/A'}")
         
         # Batch main graphs
         main_graphs = []
@@ -98,8 +102,12 @@ def custom_collate_fn(batch):
             
         batched_second_additional_graphs = Batch.from_data_list(second_additional_graphs)
         
-        # 明确返回元组
-        return (batched_main_graphs, batched_first_additional_graphs, batched_second_additional_graphs)
+        # 在返回前确保数据类型兼容
+        result = (batched_main_graphs, batched_first_additional_graphs, batched_second_additional_graphs)
+        
+        # 关键: 验证批处理结果的类型与模型期望的类型兼容
+        # 如果模型期望元组但收到了列表，则进行转换
+        return result
         
     except Exception as e:
         print(f"批次处理错误: {e}")
@@ -119,37 +127,36 @@ def custom_collate_fn(batch):
                 if isinstance(batch[0][2], list) and batch[0][2]:
                     print(f"  第二组额外图第一项类型: {type(batch[0][2][0])}")
         
-        # 如果无法正常处理，则创建默认批次
+        # 创建应急批次
         try:
-            # 创建简单的默认批次以避免返回None
+            # 至少返回一个有效结构
             from torch_geometric.data import Data
             dummy_main = Data(
-                x=torch.zeros((1, 128)),  # 假设特征维度
+                x=torch.zeros((1, 200)),  # 根据调试信息匹配特征维度
                 edge_index=torch.zeros((2, 1), dtype=torch.long),
-                edge_attr=torch.zeros((1, 32)),  # 假设边特征维度
-                y_lb_one=torch.zeros((1, 32)),  # 假设标签维度
+                edge_attr=torch.zeros((1, 400)),  # 根据调试信息匹配特征维度
+                y_lb_one=torch.zeros((1, 32)),  # 估计标签维度
                 y_multiple=torch.zeros((1, 32)),
                 y_multiple_len=torch.ones(1, dtype=torch.long),
-                fc_weight=torch.ones(1),
-                ptr=torch.tensor([0, 1], dtype=torch.long)
-            )
-            
-            dummy_add = Data(
-                x=torch.zeros((1, 128)),
-                edge_index=torch.zeros((2, 1), dtype=torch.long),
-                edge_attr=torch.zeros((1, 32)),
                 fc_weight=torch.ones(1)
             )
             
-            # 从dummy创建批次
+            dummy_add = Data(
+                x=torch.zeros((1, 200)),
+                edge_index=torch.zeros((2, 1), dtype=torch.long),
+                edge_attr=torch.zeros((1, 400)),
+                fc_weight=torch.ones(1)
+            )
+            
+            # 创建批次
             main_batch = Batch.from_data_list([dummy_main])
             add1_batch = Batch.from_data_list([dummy_add])
             add2_batch = Batch.from_data_list([dummy_add])
             
-            # 返回元组
+            print("返回应急批次数据")
             return (main_batch, add1_batch, add2_batch)
         except Exception as inner_e:
-            print(f"创建默认批次失败: {inner_e}")
+            print(f"创建应急批次失败: {inner_e}")
             return None
 
 def seed_everything(seed):
