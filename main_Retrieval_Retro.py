@@ -24,48 +24,27 @@ os.environ['OMP_NUM_THREADS'] = "4"
 from torch_geometric.data import Batch
 
 def custom_collate_fn(batch):
-    """自定义批次处理函数，标准化数据格式"""
-    # 批次结构检查和转换
+    """将数据批次转换为模型需要的标准格式"""
+    # 标准化批次中的每一项为元组
     for i, item in enumerate(batch):
         if isinstance(item, list) and len(item) == 3:
             batch[i] = tuple(item)
-            print(f"调试: 第 {i} 项被转换为元组")
-        
-        if not isinstance(batch[i], tuple) or len(batch[i]) != 3:
-            print(f"调试: 批次项 {i} 格式不正确: {type(batch[i])}")
-            return None
     
     # 批处理主图
-    main_graphs = []
-    for i, item in enumerate(batch):
-        if hasattr(item[0], 'x') and hasattr(item[0], 'edge_index'):
-            main_graphs.append(item[0])
-        else:
-            print(f"调试: 第 {i} 项的主图缺少必要属性")
-            return None
-    
+    main_graphs = [item[0] for item in batch]
     batched_main_graphs = Batch.from_data_list(main_graphs)
     
     # 批处理第一组额外图 (MPC)
     first_additional_graphs = []
-    for i, item in enumerate(batch):
-        if not isinstance(item[1], list):
-            print(f"调试: 第 {i} 项的第一组额外图不是列表: {type(item[1])}")
-            continue
-        
-        for j, graph in enumerate(item[1]):
-            if hasattr(graph, 'x') and hasattr(graph, 'edge_index'):
-                # 确保有precursor字段
-                if not hasattr(graph, 'precursor'):
-                    if hasattr(graph, 'y_lb_one'):
-                        graph.precursor = graph.y_lb_one
-                    else:
-                        print(f"调试: 第 {i} 项的第一组额外图中缺少precursor字段")
-                        continue
-                first_additional_graphs.append(graph)
+    for item in batch:
+        for graph in item[1]:
+            # 确保有precursor字段
+            if not hasattr(graph, 'precursor') and hasattr(graph, 'y_lb_one'):
+                graph.precursor = graph.y_lb_one
+            first_additional_graphs.append(graph)
     
+    # 如果没有额外图，创建填充图
     if not first_additional_graphs:
-        print("调试: 第一组额外图为空，创建虚拟图")
         from torch_geometric.data import Data
         dummy_graph = Data(
             x=torch.zeros((1, main_graphs[0].x.size(1))),
@@ -80,24 +59,15 @@ def custom_collate_fn(batch):
     
     # 批处理第二组额外图 (NRE)
     second_additional_graphs = []
-    for i, item in enumerate(batch):
-        if not isinstance(item[2], list):
-            print(f"调试: 第 {i} 项的第二组额外图不是列表: {type(item[2])}")
-            continue
-        
-        for j, graph in enumerate(item[2]):
-            if hasattr(graph, 'x') and hasattr(graph, 'edge_index'):
-                # 确保有precursor字段
-                if not hasattr(graph, 'precursor'):
-                    if hasattr(graph, 'y_lb_one'):
-                        graph.precursor = graph.y_lb_one
-                    else:
-                        print(f"调试: 第 {i} 项的第二组额外图中缺少precursor字段")
-                        continue
-                second_additional_graphs.append(graph)
+    for item in batch:
+        for graph in item[2]:
+            # 确保有precursor字段
+            if not hasattr(graph, 'precursor') and hasattr(graph, 'y_lb_one'):
+                graph.precursor = graph.y_lb_one
+            second_additional_graphs.append(graph)
     
+    # 如果没有额外图，创建填充图
     if not second_additional_graphs:
-        print("调试: 第二组额外图为空，创建虚拟图")
         from torch_geometric.data import Data
         dummy_graph = Data(
             x=torch.zeros((1, main_graphs[0].x.size(1))),
@@ -175,26 +145,14 @@ def main():
     valid_dataset = torch.load(valid_file, map_location=device, weights_only=False)
     test_dataset = torch.load(test_file, map_location=device, weights_only=False)
     
-    # 标准化数据格式
-    print(f"数据格式标准化...")
+    # 标准化数据格式 - 无条件转换所有列表为元组
     if isinstance(train_dataset, list):
-        print(f"数据格式是列表，元素数量: {len(train_dataset)}")
-        # 确保每个元素都是元组类型
-        if len(train_dataset) > 0:
-            print(f"第一个元素类型: {type(train_dataset[0])}")
-            if isinstance(train_dataset[0], list):
-                print("将列表元素转换为元组")
-                train_dataset = [tuple(x) if isinstance(x, list) else x for x in train_dataset]
-                valid_dataset = [tuple(x) if isinstance(x, list) else x for x in valid_dataset]
-                test_dataset = [tuple(x) if isinstance(x, list) else x for x in test_dataset]
+        # 统一转换为元组
+        train_dataset = [tuple(x) if isinstance(x, list) else x for x in train_dataset]
+        valid_dataset = [tuple(x) if isinstance(x, list) else x for x in valid_dataset]
+        test_dataset = [tuple(x) if isinstance(x, list) else x for x in test_dataset]
     
-    # 打印数据集大小
-    print(f"训练集大小: {len(train_dataset)}")
-    print(f"验证集大小: {len(valid_dataset)}")
-    print(f"测试集大小: {len(test_dataset)}")
-
     # 创建数据加载器
-    print(f"创建数据加载器，批次大小: {args.batch_size}")
     train_loader = DataLoader(train_dataset, batch_size = args.batch_size, shuffle=True, collate_fn = custom_collate_fn)
     valid_loader = DataLoader(valid_dataset, batch_size = 1, collate_fn = custom_collate_fn)
     test_loader = DataLoader(test_dataset, batch_size = 1, collate_fn = custom_collate_fn)

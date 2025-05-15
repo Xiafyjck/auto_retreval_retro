@@ -48,7 +48,7 @@ class Retrieval_Retro(nn.Module):
                     m.bias.data.fill_(0.0)
 
     def forward(self, data):
-        # 直接处理标准格式的元组数据
+        # 直接处理输入数据，不进行任何类型检查和转换
         main_graph = data[0].to(self.device)
         additional_graph = data[1].to(self.device)
         additional_graph_2 = data[2].to(self.device)
@@ -59,26 +59,21 @@ class Retrieval_Retro(nn.Module):
         # 处理主图
         main_graph_x = self.gnn(main_graph)
         
-        # 确保fc_weight存在且尺寸正确
+        # 处理fc_weight
         if not hasattr(main_graph, 'fc_weight'):
-            print("调试: 主图缺少fc_weight, 使用默认值1.0")
-            main_graph.fc_weight = torch.ones(main_graph.x.size(0), device=self.device)
-        elif main_graph.fc_weight.shape != (main_graph.x.size(0),):
-            print(f"调试: 主图fc_weight形状不匹配 {main_graph.fc_weight.shape} vs {(main_graph.x.size(0),)}")
             main_graph.fc_weight = torch.ones(main_graph.x.size(0), device=self.device)
         
         main_weighted_x = main_graph_x * main_graph.fc_weight.reshape(-1, 1)
         
-        # 确保batch属性存在
+        # 处理batch
         if not hasattr(main_graph, 'batch'):
-            print("调试: 主图缺少batch属性，使用默认批次")
             main_graph.batch = torch.zeros(main_graph.x.size(0), dtype=torch.long, device=self.device)
         
         main_graph_emb = scatter_sum(main_weighted_x, main_graph.batch, dim=0)
         
         # 处理额外图
-        add_pooled = self.process_additional_graphs(additional_graph, batch_size, "MPC")
-        add_pooled_2 = self.process_additional_graphs(additional_graph_2, batch_size, "NRE")
+        add_pooled = self.process_additional_graphs(additional_graph, batch_size)
+        add_pooled_2 = self.process_additional_graphs(additional_graph_2, batch_size)
         
         # MPC Self Attention Layers
         main_graph_repeat = main_graph_emb.unsqueeze(1).repeat(1, add_pooled.size(1), 1)
@@ -105,17 +100,15 @@ class Retrieval_Retro(nn.Module):
         template_output = self.classifier(classifier_input)
         return template_output
             
-    def process_additional_graphs(self, additional_graph, batch_size, graph_type=""):
-        """处理额外图，确保接口一致性"""
+    def process_additional_graphs(self, additional_graph, batch_size):
+        """处理额外图，无条件处理所有输入"""
         add_graph_outputs = []
         
-        # 检查是否缺少关键属性并补充
+        # 设置基本属性 - 无条件设置，确保接口一致
         if not hasattr(additional_graph, 'fc_weight'):
-            print(f"调试: {graph_type}图缺少fc_weight, 使用默认值")
             additional_graph.fc_weight = torch.ones(additional_graph.x.size(0), device=self.device)
         
         if not hasattr(additional_graph, 'batch'):
-            print(f"调试: {graph_type}图缺少batch属性，使用默认批次")
             additional_graph.batch = torch.zeros(additional_graph.x.size(0), dtype=torch.long, device=self.device)
         
         # 生成图嵌入
