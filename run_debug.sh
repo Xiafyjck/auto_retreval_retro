@@ -2,9 +2,9 @@
 # 设置模型文件和要分析的数据文件
 MODEL_FILE="models/Retrieval_Retro.py"
 MAIN_FILE="main_Retrieval_Retro.py"
-TRAIN_FILE="./dataset/year/train_K_3.pt"
-VALID_FILE="./dataset/year/valid_K_3.pt"
-TEST_FILE="./dataset/year/test_K_3.pt"
+TRAIN_FILE="./dataset/retro/train_K_3.pt"
+VALID_FILE="./dataset/retro/valid_K_3.pt"
+TEST_FILE="./dataset/retro/test_K_3.pt"
 
 # 检查Python脚本是否存在
 if [ ! -f "debug_data.py" ]; then
